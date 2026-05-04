@@ -1,4 +1,12 @@
-import { boolean, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 export const user = pgTable('auth_users', {
   id: text('id').primaryKey(),
@@ -60,6 +68,39 @@ export const verification = pgTable(
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]
+);
+
+export const tenantRole = pgEnum('tenant_role', [
+  'owner',
+  'manager',
+  'courier',
+]);
+
+export const tenants = pgTable('tenants', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const tenantUsers = pgTable(
+  'tenant_users',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: tenantRole('role').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('tenant_users_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('tenant_users_user_id_unique_idx').on(table.userId),
+  ]
 );
 
 export const authSchema = {
