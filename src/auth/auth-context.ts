@@ -11,6 +11,8 @@ export type ResolvedAuthContext = {
   role: 'owner' | 'manager' | 'courier';
 };
 
+export type TenantRole = ResolvedAuthContext['role'];
+
 export type AuthContextResolution =
   | ResolvedAuthContext
   | null
@@ -92,3 +94,23 @@ export const requireAuthContext = async (
   res.locals.authContext = context;
   next();
 };
+
+export const requireTenantRole =
+  (allowedRoles: readonly TenantRole[]) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
+
+    if (!context) {
+      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      return;
+    }
+
+    if (!allowedRoles.includes(context.role)) {
+      res.status(403).json({ error: 'FORBIDDEN' });
+      return;
+    }
+
+    next();
+  };
+
+export const requireManagerAccess = requireTenantRole(['owner', 'manager']);
