@@ -18,7 +18,8 @@ vi.mock('../db/index.ts', () => ({
 
 const { auth } = await import('./auth.js');
 const { db } = await import('../db/index.js');
-const { requireAuthContext } = await import('./auth-context.js');
+const { requireAuthContext, requireManagerAccess } =
+  await import('./auth-context.js');
 
 const getSession = vi.mocked(auth.api.getSession);
 const select = vi.mocked(db.select);
@@ -28,6 +29,18 @@ const createProtectedApp = () => {
   app.use(express.json());
   app.post('/protected', requireAuthContext, (req, res) => {
     res.json(res.locals.authContext);
+  });
+  return app;
+};
+
+const createManagerProtectedApp = () => {
+  const app = express();
+  app.use(express.json());
+  app.post('/manager', requireAuthContext, requireManagerAccess, (req, res) => {
+    res.json({ ok: true, role: res.locals.authContext.role });
+  });
+  app.post('/manager-without-context', requireManagerAccess, (req, res) => {
+    res.json({ ok: true });
   });
   return app;
 };
@@ -106,5 +119,50 @@ describe('protected auth context', () => {
       tenantId: 'trusted-tenant',
       role: 'owner',
     });
+  });
+
+  it('allows owners to access manager operations', async () => {
+    getSession.mockResolvedValue(mockSession('owner-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'owner' }]);
+
+    const response = await request(createManagerProtectedApp())
+      .post('/manager')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, role: 'owner' });
+  });
+
+  it('allows managers to access manager operations', async () => {
+    getSession.mockResolvedValue(mockSession('manager-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+
+    const response = await request(createManagerProtectedApp())
+      .post('/manager')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, role: 'manager' });
+  });
+
+  it('rejects couriers from manager operations', async () => {
+    getSession.mockResolvedValue(mockSession('courier-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'courier' }]);
+
+    const response = await request(createManagerProtectedApp())
+      .post('/manager')
+      .send({});
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: 'FORBIDDEN' });
+  });
+
+  it('rejects role checks without resolved auth context', async () => {
+    const response = await request(createManagerProtectedApp())
+      .post('/manager-without-context')
+      .send({});
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'UNAUTHENTICATED' });
   });
 });
