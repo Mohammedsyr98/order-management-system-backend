@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import { count, eq } from 'drizzle-orm';
 
-import { auth } from '../src/auth.js';
+import { auth } from '../src/auth/auth.js';
 import { db } from '../src/db/index.js';
 import { tenantUsers, tenants, user } from '../src/db/schema.js';
 
