@@ -3,7 +3,10 @@ import type { CreateStaffResponse } from '../contracts/staff.js';
 
 export type StaffCreationErrorCode = Extract<
   ApiErrorCode,
-  'INVALID_STAFF_ROLE' | 'STAFF_EMAIL_ALREADY_EXISTS' | 'STAFF_CREATION_FAILED'
+  | 'INVALID_STAFF_ROLE'
+  | 'FORBIDDEN'
+  | 'STAFF_EMAIL_ALREADY_EXISTS'
+  | 'STAFF_CREATION_FAILED'
 >;
 
 export type CreateStaffResult =

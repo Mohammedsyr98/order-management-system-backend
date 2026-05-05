@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { auth } from '../auth/auth.js';
 import type { ResolvedAuthContext } from '../auth/auth-context.js';
 import type { CreateStaffRequest } from '../contracts/staff.js';
-import { isStaffRole } from '../contracts/roles.js';
+import { isStaffRole, type StaffRole } from '../contracts/roles.js';
 import { db } from '../db/index.js';
 import { tenantUsers, user } from '../db/schema.js';
 import type { CreateStaffResult } from './staff-types.js';
@@ -15,12 +15,23 @@ const cleanupCreatedUser = async (userId: string) => {
   await db.delete(user).where(eq(user.id, userId));
 };
 
+const canCreateStaffRole = (
+  creatorRole: ResolvedAuthContext['role'],
+  staffRole: StaffRole
+) =>
+  creatorRole === 'owner' ||
+  (creatorRole === 'manager' && staffRole === 'courier');
+
 export const createStaff = async (
   authContext: ResolvedAuthContext,
   request: CreateStaffRequest
 ): Promise<CreateStaffResult> => {
   if (!isStaffRole(request.role)) {
     return { ok: false, errorCode: 'INVALID_STAFF_ROLE' };
+  }
+
+  if (!canCreateStaffRole(authContext.role, request.role)) {
+    return { ok: false, errorCode: 'FORBIDDEN' };
   }
 
   let createdUser: Awaited<ReturnType<typeof auth.api.signUpEmail>>['user'];
