@@ -102,6 +102,46 @@ describe('staff routes', () => {
     mockMembershipInsert();
   });
 
+  it('rejects unauthenticated staff creation requests', async () => {
+    getSession.mockResolvedValue(null);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: 'manager',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toEqual({
+      code: 'UNAUTHENTICATED',
+      message: 'You must sign in to perform this action.',
+    });
+    expect(signUpEmail).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects staff creation for authenticated users without tenant membership', async () => {
+    getSession.mockResolvedValue(mockSession('tenantless-user'));
+    mockMembershipRows([]);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: 'manager',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'TENANT_MEMBERSHIP_REQUIRED',
+      message:
+        'Your account is not linked to a tenant. Contact support for help.',
+    });
+    expect(signUpEmail).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   it('allows an owner to create a manager in their tenant', async () => {
     getSession.mockResolvedValue(mockSession('owner-1'));
     mockMembershipRows([{ tenantId: 'tenant-1', role: 'owner' }]);
