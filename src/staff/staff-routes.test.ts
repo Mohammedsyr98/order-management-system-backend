@@ -175,6 +175,27 @@ describe('staff routes', () => {
     expect(insert).toHaveBeenCalledTimes(1);
   });
 
+  it('normalizes staff email before creating the auth user', async () => {
+    getSession.mockResolvedValue(mockSession('owner-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'owner' }]);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: ' Staff@Example.COM ',
+      password: 'password123',
+      role: 'manager',
+    });
+
+    expect(response.status).toBe(201);
+    expect(signUpEmail).toHaveBeenCalledWith({
+      body: {
+        name: 'Staff User',
+        email: 'staff@example.com',
+        password: 'password123',
+      },
+    });
+  });
+
   it('allows an owner to create a courier in their tenant', async () => {
     getSession.mockResolvedValue(mockSession('owner-1'));
     mockMembershipRows([{ tenantId: 'tenant-1', role: 'owner' }]);
