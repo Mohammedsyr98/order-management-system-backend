@@ -153,6 +153,31 @@ describe('staff routes', () => {
     });
   });
 
+  it('allows a manager to create a courier in their tenant', async () => {
+    getSession.mockResolvedValue(mockSession('manager-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: 'courier',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      user: {
+        id: 'staff-1',
+        name: 'Staff User',
+        email: 'staff@example.com',
+      },
+      membership: {
+        tenantId: 'tenant-1',
+        role: 'courier',
+      },
+    });
+  });
+
   it('ignores request-body tenantId and uses the owner tenant', async () => {
     getSession.mockResolvedValue(mockSession('owner-1'));
     mockMembershipRows([{ tenantId: 'trusted-tenant', role: 'owner' }]);
@@ -182,15 +207,76 @@ describe('staff routes', () => {
     );
   });
 
-  it('rejects managers and couriers from creating staff', async () => {
+  it('ignores request-body tenantId and uses the manager tenant', async () => {
+    getSession.mockResolvedValue(mockSession('manager-1'));
+    mockMembershipRows([{ tenantId: 'trusted-tenant', role: 'manager' }]);
+    const { values } = mockMembershipInsert([
+      { tenantId: 'trusted-tenant', role: 'courier' },
+    ]);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: 'courier',
+      tenantId: 'attacker-tenant',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.membership.tenantId).toBe('trusted-tenant');
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'trusted-tenant',
+        userId: 'staff-1',
+        role: 'courier',
+      })
+    );
+    expect(values).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'attacker-tenant' })
+    );
+  });
+
+  it('rejects managers from creating managers', async () => {
     getSession.mockResolvedValue(mockSession('manager-1'));
     mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: 'manager',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(signUpEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects managers from creating owners as an invalid staff role', async () => {
+    getSession.mockResolvedValue(mockSession('manager-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+
+    const response = await request(createApp()).post('/api/staff').send({
+      name: 'Staff User',
+      email: 'staff@example.com',
+      password: 'password123',
+      role: 'owner',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVALID_STAFF_ROLE');
+    expect(signUpEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects couriers from creating users', async () => {
+    getSession.mockResolvedValue(mockSession('courier-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'courier' }]);
 
     const managerResponse = await request(createApp()).post('/api/staff').send({
       name: 'Staff User',
       email: 'staff@example.com',
       password: 'password123',
-      role: 'courier',
+      role: 'manager',
     });
 
     getSession.mockResolvedValue(mockSession('courier-1'));
@@ -200,7 +286,7 @@ describe('staff routes', () => {
       name: 'Staff User',
       email: 'staff@example.com',
       password: 'password123',
-      role: 'manager',
+      role: 'courier',
     });
 
     expect(managerResponse.status).toBe(403);
