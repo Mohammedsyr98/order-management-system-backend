@@ -26,6 +26,8 @@ export const createStaff = async (
   authContext: ResolvedAuthContext,
   request: CreateStaffRequest
 ): Promise<CreateStaffResult> => {
+  const email = request.email.trim().toLowerCase();
+
   if (!isStaffRole(request.role)) {
     return { ok: false, errorCode: 'INVALID_STAFF_ROLE' };
   }
@@ -40,7 +42,7 @@ export const createStaff = async (
     const result = await auth.api.signUpEmail({
       body: {
         name: request.name,
-        email: request.email,
+        email,
         password: request.password,
       },
     });

@@ -40,4 +40,17 @@ describe('auth routes', () => {
     expect(response.status).toBe(400);
     expect(response.body.code).not.toBe('EMAIL_PASSWORD_DISABLED');
   });
+
+  it('blocks native public email signup', async () => {
+    const response = await request(app)
+      .post('/api/auth/sign-up/email')
+      .set('origin', 'http://localhost:3000')
+      .send({
+        name: 'Public Signup',
+        email: 'public@example.com',
+        password: 'password123',
+      });
+
+    expect(response.status).toBe(404);
+  });
 });

@@ -6,6 +6,9 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   UNAUTHENTICATED: 'You must sign in to perform this action.',
   TENANT_MEMBERSHIP_REQUIRED:
     'Your account is not linked to a tenant. Contact support for help.',
+  INVALID_LOGIN_REQUEST: 'Email and password are required.',
+  INVALID_CREDENTIALS: 'Email or password is incorrect.',
+  SESSION_CONTEXT_FAILED: 'Session context could not be resolved.',
   FORBIDDEN: 'You do not have permission to perform this action.',
   INVALID_STAFF_ROLE: 'Staff role must be manager or courier.',
   STAFF_EMAIL_ALREADY_EXISTS: 'A user with this email already exists.',
