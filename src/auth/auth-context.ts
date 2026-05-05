@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { auth } from './auth.js';
 import { db } from '../db/index.js';
 import { tenantUsers } from '../db/schema.js';
+import { sendApiError } from '../http/api-errors.js';
 
 export type ResolvedAuthContext = {
   userId: string;
@@ -82,12 +83,12 @@ export const requireAuthContext = async (
   const context = await resolveAuthContext(headersFromRequest(req));
 
   if (context === null) {
-    res.status(401).json({ error: 'UNAUTHENTICATED' });
+    sendApiError(res, 401, 'UNAUTHENTICATED');
     return;
   }
 
   if (context === 'missing-membership') {
-    res.status(403).json({ error: 'TENANT_MEMBERSHIP_REQUIRED' });
+    sendApiError(res, 403, 'TENANT_MEMBERSHIP_REQUIRED');
     return;
   }
 
@@ -101,12 +102,12 @@ export const requireTenantRole =
     const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
-      res.status(401).json({ error: 'UNAUTHENTICATED' });
+      sendApiError(res, 401, 'UNAUTHENTICATED');
       return;
     }
 
     if (!allowedRoles.includes(context.role)) {
-      res.status(403).json({ error: 'FORBIDDEN' });
+      sendApiError(res, 403, 'FORBIDDEN');
       return;
     }
 
@@ -114,3 +115,4 @@ export const requireTenantRole =
   };
 
 export const requireManagerAccess = requireTenantRole(['owner', 'manager']);
+export const requireOwnerAccess = requireTenantRole(['owner']);

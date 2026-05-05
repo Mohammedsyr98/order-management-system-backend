@@ -74,7 +74,12 @@ describe('protected auth context', () => {
       .send({});
 
     expect(response.status).toBe(401);
-    expect(response.body).toEqual({ error: 'UNAUTHENTICATED' });
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHENTICATED',
+        message: 'You must sign in to perform this action.',
+      },
+    });
   });
 
   it('rejects authenticated users without tenant membership', async () => {
@@ -86,7 +91,13 @@ describe('protected auth context', () => {
       .send({});
 
     expect(response.status).toBe(403);
-    expect(response.body).toEqual({ error: 'TENANT_MEMBERSHIP_REQUIRED' });
+    expect(response.body).toEqual({
+      error: {
+        code: 'TENANT_MEMBERSHIP_REQUIRED',
+        message:
+          'Your account is not linked to a tenant. Contact support for help.',
+      },
+    });
   });
 
   it('returns resolved user, tenant, and role context for tenant members', async () => {
@@ -154,7 +165,12 @@ describe('protected auth context', () => {
       .send({});
 
     expect(response.status).toBe(403);
-    expect(response.body).toEqual({ error: 'FORBIDDEN' });
+    expect(response.body).toEqual({
+      error: {
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to perform this action.',
+      },
+    });
   });
 
   it('rejects role checks without resolved auth context', async () => {
@@ -163,6 +179,11 @@ describe('protected auth context', () => {
       .send({});
 
     expect(response.status).toBe(401);
-    expect(response.body).toEqual({ error: 'UNAUTHENTICATED' });
+    expect(response.body).toEqual({
+      error: {
+        code: 'UNAUTHENTICATED',
+        message: 'You must sign in to perform this action.',
+      },
+    });
   });
 });
