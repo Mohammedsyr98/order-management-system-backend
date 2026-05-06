@@ -20,6 +20,7 @@ const requiredEnv = (name: string) => {
 
 const main = async () => {
   const tenantName = requiredEnv('OWNER_TENANT_NAME');
+  const tenantPhone = requiredEnv('OWNER_TENANT_PHONE');
   const ownerName = requiredEnv('OWNER_NAME');
   const ownerEmail = requiredEnv('OWNER_EMAIL').toLowerCase();
   const ownerPassword = requiredEnv('OWNER_PASSWORD');
@@ -58,6 +59,7 @@ const main = async () => {
       .values({
         id: createdTenantId,
         name: tenantName,
+        phone: tenantPhone,
       })
       .returning({ id: tenants.id, name: tenants.name });
 

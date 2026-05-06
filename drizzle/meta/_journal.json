@@ -15,6 +15,20 @@
       "when": 1777895078383,
       "tag": "0001_windy_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778054258530,
+      "tag": "0002_small_cassandra_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778063197811,
+      "tag": "0003_keen_miss_america",
+      "breakpoints": true
     }
   ]
 }

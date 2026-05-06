@@ -1,12 +1,16 @@
 import {
   boolean,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+import type { OperatingHours } from '../contracts/tenant.js';
 
 export const user = pgTable('auth_users', {
   id: text('id').primaryKey(),
@@ -79,6 +83,14 @@ export const tenantRole = pgEnum('tenant_role', [
 export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  phone: text('phone').notNull(),
+  timezone: text('timezone').notNull().default('Europe/Istanbul'),
+  operatingHours: jsonb('operating_hours')
+    .$type<OperatingHours>()
+    .notNull()
+    .default(
+      sql`'{"monday":{"status":"open","open":"09:00","close":"17:00"},"tuesday":{"status":"open","open":"09:00","close":"17:00"},"wednesday":{"status":"open","open":"09:00","close":"17:00"},"thursday":{"status":"open","open":"09:00","close":"17:00"},"friday":{"status":"open","open":"09:00","close":"17:00"},"saturday":{"status":"open","open":"09:00","close":"17:00"},"sunday":{"status":"closed"}}'::jsonb`
+    ),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
