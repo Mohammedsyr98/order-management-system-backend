@@ -10,6 +10,8 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   INVALID_CREDENTIALS: 'Email or password is incorrect.',
   SESSION_CONTEXT_FAILED: 'Session context could not be resolved.',
   FORBIDDEN: 'You do not have permission to perform this action.',
+  INVALID_TENANT_PROFILE: 'Tenant name and phone are required.',
+  TENANT_UPDATE_FAILED: 'Tenant profile could not be updated.',
   INVALID_STAFF_ROLE: 'Staff role must be manager or courier.',
   STAFF_EMAIL_ALREADY_EXISTS: 'A user with this email already exists.',
   STAFF_CREATION_FAILED: 'Staff account could not be created.',

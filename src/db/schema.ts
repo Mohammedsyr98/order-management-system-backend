@@ -79,6 +79,7 @@ export const tenantRole = pgEnum('tenant_role', [
 export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  phone: text('phone').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

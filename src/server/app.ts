@@ -3,6 +3,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { auth } from '../auth/auth.js';
 import { sessionRouter } from '../session/session-routes.js';
 import { staffRouter } from '../staff/staff-routes.js';
+import { tenantRouter } from '../tenant/tenant-routes.js';
 
 export const app = express();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 
 app.use('/api/session', sessionRouter);
 app.use('/api/staff', staffRouter);
+app.use('/api/tenant', tenantRouter);
 
 app.get('/', (req, res) => {
   res.send('Test');
