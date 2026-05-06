@@ -25,6 +25,16 @@ const getSession = vi.mocked(auth.api.getSession);
 const select = vi.mocked(db.select);
 const update = vi.mocked(db.update);
 
+const defaultOperatingHours = {
+  monday: { status: 'open', open: '09:00', close: '17:00' },
+  tuesday: { status: 'open', open: '09:00', close: '17:00' },
+  wednesday: { status: 'open', open: '09:00', close: '17:00' },
+  thursday: { status: 'open', open: '09:00', close: '17:00' },
+  friday: { status: 'open', open: '09:00', close: '17:00' },
+  saturday: { status: 'open', open: '09:00', close: '17:00' },
+  sunday: { status: 'closed' },
+};
+
 const createApp = () => {
   const app = express();
   app.use(express.json());
@@ -45,7 +55,9 @@ const mockMembershipRows = (
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
 
-  select.mockReturnValue({ from } as unknown as ReturnType<typeof db.select>);
+  select.mockReturnValueOnce({
+    from,
+  } as unknown as ReturnType<typeof db.select>);
 };
 
 const mockTenantUpdate = (
@@ -54,6 +66,8 @@ const mockTenantUpdate = (
       id: 'tenant-1',
       name: 'Updated Tenant',
       phone: '+15551234567',
+      timezone: 'Europe/Istanbul',
+      operatingHours: defaultOperatingHours,
     },
   ]
 ) => {
@@ -62,6 +76,26 @@ const mockTenantUpdate = (
   const set = vi.fn().mockReturnValue({ where });
 
   update.mockReturnValue({ set } as unknown as ReturnType<typeof db.update>);
+};
+
+const mockTenantProfileRows = (
+  rows = [
+    {
+      id: 'tenant-1',
+      name: 'Main Tenant',
+      phone: '+15550000000',
+      timezone: 'Europe/Istanbul',
+      operatingHours: defaultOperatingHours,
+    },
+  ]
+) => {
+  const limit = vi.fn().mockResolvedValue(rows);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+
+  select.mockReturnValueOnce({
+    from,
+  } as unknown as ReturnType<typeof db.select>);
 };
 
 describe('tenant routes', () => {
@@ -78,6 +112,8 @@ describe('tenant routes', () => {
         id: 'tenant-1',
         name: 'Existing Tenant',
         phone: '+15551234567',
+        timezone: 'Europe/Istanbul',
+        operatingHours: defaultOperatingHours,
       },
     ]);
 
@@ -91,7 +127,42 @@ describe('tenant routes', () => {
         id: 'tenant-1',
         name: 'Existing Tenant',
         phone: '+15551234567',
+        timezone: 'Europe/Istanbul',
+        operatingHours: defaultOperatingHours,
       },
+    });
+  });
+
+  it('returns the current tenant profile for a tenant member', async () => {
+    getSession.mockResolvedValue(mockSession('manager-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+    mockTenantProfileRows();
+
+    const response = await request(createApp()).get('/api/tenant');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      tenant: {
+        id: 'tenant-1',
+        name: 'Main Tenant',
+        phone: '+15550000000',
+        timezone: 'Europe/Istanbul',
+        operatingHours: defaultOperatingHours,
+      },
+    });
+  });
+
+  it('returns not found when the current tenant profile does not exist', async () => {
+    getSession.mockResolvedValue(mockSession('manager-1'));
+    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+    mockTenantProfileRows([]);
+
+    const response = await request(createApp()).get('/api/tenant');
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toEqual({
+      code: 'TENANT_PROFILE_NOT_FOUND',
+      message: 'Tenant profile could not be found.',
     });
   });
 
@@ -118,7 +189,7 @@ describe('tenant routes', () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toEqual({
       code: 'INVALID_TENANT_PROFILE',
-      message: 'Tenant name and phone are required.',
+      message: 'Tenant profile update is invalid.',
     });
     expect(update).not.toHaveBeenCalled();
   });

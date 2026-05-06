@@ -1,0 +1,2 @@
+ALTER TABLE "tenants" ADD COLUMN "timezone" text DEFAULT 'Europe/Istanbul' NOT NULL;--> statement-breakpoint
+ALTER TABLE "tenants" ADD COLUMN "operating_hours" jsonb DEFAULT '{"monday":{"status":"open","open":"09:00","close":"17:00"},"tuesday":{"status":"open","open":"09:00","close":"17:00"},"wednesday":{"status":"open","open":"09:00","close":"17:00"},"thursday":{"status":"open","open":"09:00","close":"17:00"},"friday":{"status":"open","open":"09:00","close":"17:00"},"saturday":{"status":"open","open":"09:00","close":"17:00"},"sunday":{"status":"closed"}}'::jsonb NOT NULL;

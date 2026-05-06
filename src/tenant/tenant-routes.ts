@@ -7,9 +7,25 @@ import {
 } from '../auth/auth-context.js';
 import type { UpdateTenantProfileRequest } from '../contracts/tenant.js';
 import { sendApiError } from '../http/api-errors.js';
-import { updateTenantProfile } from './tenant-service.js';
+import { getTenantProfile, updateTenantProfile } from './tenant-service.js';
+import type { UpdateTenantProfileErrorCode } from './tenant-types.js';
 
 export const tenantRouter = Router();
+
+const updateTenantProfileStatus = (errorCode: UpdateTenantProfileErrorCode) =>
+  errorCode === 'INVALID_TENANT_PROFILE' ? 400 : 422;
+
+tenantRouter.get('/', requireAuthContext, async (_req, res) => {
+  const context = res.locals.authContext as ResolvedAuthContext;
+  const result = await getTenantProfile(context.tenantId);
+
+  if (!result.ok) {
+    sendApiError(res, 404, result.errorCode);
+    return;
+  }
+
+  res.json(result.data);
+});
 
 tenantRouter.patch(
   '/',
@@ -23,9 +39,11 @@ tenantRouter.patch(
     );
 
     if (!result.ok) {
-      const status = result.errorCode === 'INVALID_TENANT_PROFILE' ? 400 : 422;
-
-      sendApiError(res, status, result.errorCode);
+      sendApiError(
+        res,
+        updateTenantProfileStatus(result.errorCode),
+        result.errorCode
+      );
       return;
     }
 
