@@ -2,6 +2,8 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { ListManagersResponse } from '../contracts/staff.js';
+
 type RouteAuthContext = {
   userId: string;
   tenantId: string;
@@ -44,16 +46,43 @@ vi.mock('../auth/auth-context.js', () => ({
     res.locals.authContext = routeAuth.context;
     next();
   }),
+  requireOwnerAccess: vi.fn((_req, res, next) => {
+    const context = res.locals.authContext as RouteAuthContext | undefined;
+
+    if (!context) {
+      res.status(401).json({
+        error: {
+          code: 'UNAUTHENTICATED',
+          message: 'You must sign in to perform this action.',
+        },
+      });
+      return;
+    }
+
+    if (context.role !== 'owner') {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.',
+        },
+      });
+      return;
+    }
+
+    next();
+  }),
 }));
 
 vi.mock('./staff-service.js', () => ({
   createStaff: vi.fn(),
+  listManagers: vi.fn(),
 }));
 
-const { createStaff } = await import('./staff-service.js');
+const { createStaff, listManagers } = await import('./staff-service.js');
 const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
+const listManagersMock = vi.mocked(listManagers);
 
 const createApp = () => {
   const app = express();
@@ -83,6 +112,19 @@ const createdStaff = {
   },
 } as const;
 
+const listedManagers: ListManagersResponse = {
+  managers: [
+    {
+      id: 'manager-1',
+      name: 'Manager User',
+      email: 'manager@example.com',
+      tenantId: 'tenant-1',
+      role: 'manager',
+      phone: '+15551234567',
+    },
+  ],
+};
+
 describe('staff routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,7 +137,63 @@ describe('staff routes', () => {
       ok: true,
       data: createdStaff,
     });
+    listManagersMock.mockResolvedValue(listedManagers);
   });
+
+  it('lists managers for an owner tenant', async () => {
+    const response = await request(createApp()).get('/api/staff/managers');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(listedManagers);
+    expect(listManagersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('rejects unauthenticated manager listing requests', async () => {
+    routeAuth.context = null;
+
+    const response = await request(createApp()).get('/api/staff/managers');
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toEqual({
+      code: 'UNAUTHENTICATED',
+      message: 'You must sign in to perform this action.',
+    });
+    expect(listManagersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manager listing for authenticated users without tenant membership', async () => {
+    routeAuth.context = 'missing-membership';
+
+    const response = await request(createApp()).get('/api/staff/managers');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'TENANT_MEMBERSHIP_REQUIRED',
+      message:
+        'Your account is not linked to a tenant. Contact support for help.',
+    });
+    expect(listManagersMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['manager', 'courier'] as const)(
+    'rejects manager listing for %s users',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+
+      const response = await request(createApp()).get('/api/staff/managers');
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toEqual({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to perform this action.',
+      });
+      expect(listManagersMock).not.toHaveBeenCalled();
+    }
+  );
 
   it('rejects unauthenticated staff creation requests', async () => {
     routeAuth.context = null;

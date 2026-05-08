@@ -22,3 +22,16 @@ export type CreateStaffResponse = {
     phone: string | null;
   };
 };
+
+export type ManagerListItem = {
+  id: string;
+  name: string;
+  email: string;
+  tenantId: string;
+  role: 'manager';
+  phone: string | null;
+};
+
+export type ListManagersResponse = {
+  managers: ManagerListItem[];
+};
