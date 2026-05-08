@@ -6,10 +6,11 @@ import { eq } from 'drizzle-orm';
 import { auth } from '../auth/auth.js';
 import type { ResolvedAuthContext } from '../auth/auth-context.js';
 import type { CreateStaffRequest } from '../contracts/staff.js';
-import { isStaffRole, type StaffRole } from '../contracts/roles.js';
+import type { StaffRole } from '../contracts/roles.js';
 import { db } from '../db/index.js';
 import { tenantUsers, user } from '../db/schema.js';
 import type { CreateStaffResult } from './staff-types.js';
+import { parseCreateStaffRequest } from './staff-validation.js';
 
 const cleanupCreatedUser = async (userId: string) => {
   await db.delete(user).where(eq(user.id, userId));
@@ -22,28 +23,19 @@ const canCreateStaffRole = (
   creatorRole === 'owner' ||
   (creatorRole === 'manager' && staffRole === 'courier');
 
-const normalizeMembershipPhone = (phone: CreateStaffRequest['phone']) => {
-  if (phone === undefined || phone === null) {
-    return null;
-  }
-
-  const normalizedPhone = phone.trim();
-
-  return normalizedPhone.length > 0 ? normalizedPhone : null;
-};
-
 export const createStaff = async (
   authContext: ResolvedAuthContext,
   request: CreateStaffRequest
 ): Promise<CreateStaffResult> => {
-  const email = request.email.trim().toLowerCase();
-  const phone = normalizeMembershipPhone(request.phone);
+  const validation = parseCreateStaffRequest(request);
 
-  if (!isStaffRole(request.role)) {
-    return { ok: false, errorCode: 'INVALID_STAFF_ROLE' };
+  if (!validation.success) {
+    return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
   }
 
-  if (!canCreateStaffRole(authContext.role, request.role)) {
+  const staff = validation.data;
+
+  if (!canCreateStaffRole(authContext.role, staff.role)) {
     return { ok: false, errorCode: 'FORBIDDEN' };
   }
 
@@ -52,9 +44,9 @@ export const createStaff = async (
   try {
     const result = await auth.api.signUpEmail({
       body: {
-        name: request.name,
-        email,
-        password: request.password,
+        name: staff.name,
+        email: staff.email,
+        password: staff.password,
       },
     });
     createdUser = result.user;
@@ -76,8 +68,8 @@ export const createStaff = async (
         id: randomUUID(),
         tenantId: authContext.tenantId,
         userId: createdUser.id,
-        role: request.role,
-        phone,
+        role: staff.role,
+        phone: staff.phone,
       })
       .returning({
         tenantId: tenantUsers.tenantId,
@@ -99,7 +91,7 @@ export const createStaff = async (
         },
         membership: {
           tenantId: membership.tenantId,
-          role: request.role,
+          role: staff.role,
           phone: membership.phone,
         },
       },

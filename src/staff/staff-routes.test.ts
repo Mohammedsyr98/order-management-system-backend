@@ -147,7 +147,7 @@ describe('staff routes', () => {
   });
 
   it.each([
-    ['INVALID_STAFF_ROLE', 400, 'Staff role must be manager or courier.'],
+    ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
     ['FORBIDDEN', 403, 'You do not have permission to perform this action.'],
     [
       'STAFF_EMAIL_ALREADY_EXISTS',

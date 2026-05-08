@@ -19,7 +19,7 @@ staffRouter.post('/', requireAuthContext, async (req, res) => {
 
   if (!result.ok) {
     const status =
-      result.errorCode === 'INVALID_STAFF_ROLE'
+      result.errorCode === 'INVALID_STAFF_REQUEST'
         ? 400
         : result.errorCode === 'FORBIDDEN'
           ? 403

@@ -329,7 +329,7 @@ describe('createStaff', () => {
 
     expect(result).toEqual({
       ok: false,
-      errorCode: 'INVALID_STAFF_ROLE',
+      errorCode: 'INVALID_STAFF_REQUEST',
     });
     expect(signUpEmail).not.toHaveBeenCalled();
     await expect(getPersistedAuthUser()).resolves.toBeNull();
