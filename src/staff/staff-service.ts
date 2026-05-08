@@ -22,11 +22,22 @@ const canCreateStaffRole = (
   creatorRole === 'owner' ||
   (creatorRole === 'manager' && staffRole === 'courier');
 
+const normalizeMembershipPhone = (phone: CreateStaffRequest['phone']) => {
+  if (phone === undefined || phone === null) {
+    return null;
+  }
+
+  const normalizedPhone = phone.trim();
+
+  return normalizedPhone.length > 0 ? normalizedPhone : null;
+};
+
 export const createStaff = async (
   authContext: ResolvedAuthContext,
   request: CreateStaffRequest
 ): Promise<CreateStaffResult> => {
   const email = request.email.trim().toLowerCase();
+  const phone = normalizeMembershipPhone(request.phone);
 
   if (!isStaffRole(request.role)) {
     return { ok: false, errorCode: 'INVALID_STAFF_ROLE' };
@@ -66,9 +77,11 @@ export const createStaff = async (
         tenantId: authContext.tenantId,
         userId: createdUser.id,
         role: request.role,
+        phone,
       })
       .returning({
         tenantId: tenantUsers.tenantId,
+        phone: tenantUsers.phone,
       });
 
     if (!membership) {
@@ -87,6 +100,7 @@ export const createStaff = async (
         membership: {
           tenantId: membership.tenantId,
           role: request.role,
+          phone: membership.phone,
         },
       },
     };

@@ -109,6 +109,7 @@ const getPersistedMembership = async (userId = 'staff-1') => {
       tenantId: tenantUsers.tenantId,
       userId: tenantUsers.userId,
       role: tenantUsers.role,
+      phone: tenantUsers.phone,
     })
     .from(tenantUsers)
     .where(eq(tenantUsers.userId, userId))
@@ -127,7 +128,10 @@ describe('createStaff', () => {
   it('allows an owner to create a manager in their tenant', async () => {
     await insertTenant();
 
-    const result = await createStaff(ownerContext, staffRequest);
+    const result = await createStaff(ownerContext, {
+      ...staffRequest,
+      phone: ' +15551234567 ',
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -140,6 +144,7 @@ describe('createStaff', () => {
         membership: {
           tenantId: 'tenant-1',
           role: 'manager',
+          phone: '+15551234567',
         },
       },
     });
@@ -154,6 +159,66 @@ describe('createStaff', () => {
       tenantId: 'tenant-1',
       userId: 'staff-1',
       role: 'manager',
+      phone: '+15551234567',
+    });
+  });
+
+  it('stores null phone when staff phone is omitted', async () => {
+    await insertTenant();
+
+    const result = await createStaff(ownerContext, staffRequest);
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        user: {
+          id: 'staff-1',
+          name: 'Staff User',
+          email: 'staff@example.com',
+        },
+        membership: {
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: null,
+        },
+      },
+    });
+    await expect(getPersistedMembership()).resolves.toEqual({
+      tenantId: 'tenant-1',
+      userId: 'staff-1',
+      role: 'manager',
+      phone: null,
+    });
+  });
+
+  it('stores null phone when staff phone is blank', async () => {
+    await insertTenant();
+
+    const result = await createStaff(ownerContext, {
+      ...staffRequest,
+      phone: '   ',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        user: {
+          id: 'staff-1',
+          name: 'Staff User',
+          email: 'staff@example.com',
+        },
+        membership: {
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: null,
+        },
+      },
+    });
+    await expect(getPersistedMembership()).resolves.toEqual({
+      tenantId: 'tenant-1',
+      userId: 'staff-1',
+      role: 'manager',
+      phone: null,
     });
   });
 
@@ -176,6 +241,7 @@ describe('createStaff', () => {
         membership: {
           tenantId: 'tenant-1',
           role: 'courier',
+          phone: null,
         },
       },
     });
@@ -183,6 +249,7 @@ describe('createStaff', () => {
       tenantId: 'tenant-1',
       userId: 'staff-1',
       role: 'courier',
+      phone: null,
     });
   });
 
@@ -205,6 +272,7 @@ describe('createStaff', () => {
         membership: {
           tenantId: 'tenant-1',
           role: 'courier',
+          phone: null,
         },
       },
     });
@@ -212,6 +280,7 @@ describe('createStaff', () => {
       tenantId: 'tenant-1',
       userId: 'staff-1',
       role: 'courier',
+      phone: null,
     });
   });
 
@@ -310,6 +379,7 @@ describe('createStaff', () => {
         membership: {
           tenantId: 'trusted-tenant',
           role: 'manager',
+          phone: null,
         },
       },
     });
@@ -317,6 +387,7 @@ describe('createStaff', () => {
       tenantId: 'trusted-tenant',
       userId: 'staff-1',
       role: 'manager',
+      phone: null,
     });
   });
 

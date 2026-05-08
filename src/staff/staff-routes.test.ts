@@ -67,6 +67,7 @@ const staffRequest = {
   email: 'staff@example.com',
   password: 'password123',
   role: 'manager',
+  phone: '+15551234567',
 };
 
 const createdStaff = {
@@ -78,6 +79,7 @@ const createdStaff = {
   membership: {
     tenantId: 'tenant-1',
     role: 'manager',
+    phone: '+15551234567',
   },
 } as const;
 
