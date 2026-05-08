@@ -13,7 +13,7 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   TENANT_PROFILE_NOT_FOUND: 'Tenant profile could not be found.',
   INVALID_TENANT_PROFILE: 'Tenant profile update is invalid.',
   TENANT_UPDATE_FAILED: 'Tenant profile could not be updated.',
-  INVALID_STAFF_ROLE: 'Staff role must be manager or courier.',
+  INVALID_STAFF_REQUEST: 'Staff request is invalid.',
   STAFF_EMAIL_ALREADY_EXISTS: 'A user with this email already exists.',
   STAFF_CREATION_FAILED: 'Staff account could not be created.',
 };

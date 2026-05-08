@@ -106,6 +106,7 @@ export const tenantUsers = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     role: tenantRole('role').notNull(),
+    phone: text('phone'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

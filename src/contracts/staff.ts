@@ -7,6 +7,7 @@ export type CreateStaffRequest = {
   email: string;
   password: string;
   role: CreateStaffRole;
+  phone?: string | null;
 };
 
 export type CreateStaffResponse = {
@@ -18,5 +19,6 @@ export type CreateStaffResponse = {
   membership: {
     tenantId: string;
     role: CreateStaffRole;
+    phone: string | null;
   };
 };
