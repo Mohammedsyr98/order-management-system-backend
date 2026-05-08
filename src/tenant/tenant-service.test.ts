@@ -1,83 +1,64 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import 'dotenv/config';
 
-vi.mock('../db/index.ts', () => ({
-  db: {
-    select: vi.fn(),
-    update: vi.fn(),
-  },
-}));
+import type { OperatingHours } from '../contracts/tenant.js';
 
-const { db } = await import('../db/index.js');
+process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
+
+const { defaultOperatingHours } = await import('../contracts/tenant.js');
+const { insertTenant, resetTenantTestData } =
+  await import('../test/test-db.js');
 const { getTenantProfile, updateTenantProfile } =
   await import('./tenant-service.js');
 
-const select = vi.mocked(db.select);
-const update = vi.mocked(db.update);
+const tenantProfile = (
+  overrides: Partial<{
+    id: string;
+    name: string;
+    phone: string;
+    timezone: string;
+    operatingHours: OperatingHours;
+  }> = {}
+) => ({
+  id: 'tenant-1',
+  name: 'Main Tenant',
+  phone: '+15550000000',
+  timezone: 'Europe/Istanbul',
+  operatingHours: defaultOperatingHours,
+  ...overrides,
+});
 
-const defaultOperatingHours = {
-  monday: { status: 'open', open: '09:00', close: '17:00' },
-  tuesday: { status: 'open', open: '09:00', close: '17:00' },
-  wednesday: { status: 'open', open: '09:00', close: '17:00' },
-  thursday: { status: 'open', open: '09:00', close: '17:00' },
-  friday: { status: 'open', open: '09:00', close: '17:00' },
-  saturday: { status: 'open', open: '09:00', close: '17:00' },
-  sunday: { status: 'closed' },
-};
-
-const mockTenantUpdate = (
-  rows = [
-    {
-      id: 'tenant-1',
-      name: 'Updated Tenant',
-      phone: '+15551234567',
-      timezone: 'Europe/Istanbul',
-      operatingHours: defaultOperatingHours,
-    },
-  ]
+const expectPersistedTenantProfile = async (
+  expected: ReturnType<typeof tenantProfile>
 ) => {
-  const returning = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ returning });
-  const set = vi.fn().mockReturnValue({ where });
-
-  update.mockReturnValue({ set } as unknown as ReturnType<typeof db.update>);
-
-  return { set };
-};
-
-const mockTenantProfileRows = (
-  rows = [
-    {
-      id: 'tenant-1',
-      name: 'Main Tenant',
-      phone: '+15550000000',
-      timezone: 'Europe/Istanbul',
-      operatingHours: defaultOperatingHours,
+  await expect(getTenantProfile(expected.id)).resolves.toEqual({
+    ok: true,
+    data: {
+      tenant: expected,
     },
-  ]
-) => {
-  const limit = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
-
-  select.mockReturnValue({ from } as unknown as ReturnType<typeof db.select>);
+  });
 };
 
 describe('updateTenantProfile', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    await resetTenantTestData();
   });
 
-  it('requires at least one tenant profile field', async () => {
+  it('requires at least one tenant profile field and leaves the tenant unchanged', async () => {
+    await insertTenant();
+
     const result = await updateTenantProfile('tenant-1', {});
 
     expect(result).toEqual({
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
   });
 
-  it('rejects blank provided tenant profile fields', async () => {
+  it('rejects blank provided tenant profile fields and leaves the tenant unchanged', async () => {
+    await insertTenant();
+
     const result = await updateTenantProfile('tenant-1', {
       name: 'Updated Tenant',
       phone: '',
@@ -87,150 +68,90 @@ describe('updateTenantProfile', () => {
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
   });
 
-  it('updates only the provided tenant name', async () => {
-    const { set } = mockTenantUpdate([
-      {
-        id: 'tenant-1',
-        name: 'Updated Tenant',
-        phone: '+15550000000',
-        timezone: 'Europe/Istanbul',
-        operatingHours: defaultOperatingHours,
-      },
-    ]);
+  it('trims and persists the provided tenant name while preserving other fields', async () => {
+    await insertTenant();
 
     const result = await updateTenantProfile('tenant-1', {
       name: ' Updated Tenant ',
     });
 
+    const expectedTenant = tenantProfile({ name: 'Updated Tenant' });
     expect(result).toEqual({
       ok: true,
       data: {
-        tenant: {
-          id: 'tenant-1',
-          name: 'Updated Tenant',
-          phone: '+15550000000',
-          timezone: 'Europe/Istanbul',
-          operatingHours: defaultOperatingHours,
-        },
+        tenant: expectedTenant,
       },
     });
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Updated Tenant',
-      })
-    );
-    expect(set).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        phone: expect.any(String),
-      })
-    );
+    await expectPersistedTenantProfile(expectedTenant);
   });
 
-  it('updates only the provided tenant phone', async () => {
-    const { set } = mockTenantUpdate([
-      {
-        id: 'tenant-1',
-        name: 'Existing Tenant',
-        phone: '+15551234567',
-        timezone: 'Europe/Istanbul',
-        operatingHours: defaultOperatingHours,
-      },
-    ]);
+  it('trims and persists the provided tenant phone while preserving other fields', async () => {
+    await insertTenant({ name: 'Existing Tenant' });
 
     const result = await updateTenantProfile('tenant-1', {
       phone: ' +15551234567 ',
     });
 
+    const expectedTenant = tenantProfile({
+      name: 'Existing Tenant',
+      phone: '+15551234567',
+    });
     expect(result).toEqual({
       ok: true,
       data: {
-        tenant: {
-          id: 'tenant-1',
-          name: 'Existing Tenant',
-          phone: '+15551234567',
-          timezone: 'Europe/Istanbul',
-          operatingHours: defaultOperatingHours,
-        },
+        tenant: expectedTenant,
       },
     });
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        phone: '+15551234567',
-      })
-    );
-    expect(set).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: expect.any(String),
-      })
-    );
+    await expectPersistedTenantProfile(expectedTenant);
   });
 
-  it('updates the tenant with trimmed name and phone', async () => {
-    const { set } = mockTenantUpdate();
+  it('trims and persists the provided tenant name and phone', async () => {
+    await insertTenant();
 
     const result = await updateTenantProfile('tenant-1', {
       name: ' Updated Tenant ',
       phone: ' +15551234567 ',
     });
 
+    const expectedTenant = tenantProfile({
+      name: 'Updated Tenant',
+      phone: '+15551234567',
+    });
     expect(result).toEqual({
       ok: true,
       data: {
-        tenant: {
-          id: 'tenant-1',
-          name: 'Updated Tenant',
-          phone: '+15551234567',
-          timezone: 'Europe/Istanbul',
-          operatingHours: defaultOperatingHours,
-        },
+        tenant: expectedTenant,
       },
     });
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Updated Tenant',
-        phone: '+15551234567',
-      })
-    );
+    await expectPersistedTenantProfile(expectedTenant);
   });
 
-  it('updates only the provided tenant timezone', async () => {
-    const { set } = mockTenantUpdate([
-      {
-        id: 'tenant-1',
-        name: 'Existing Tenant',
-        phone: '+15550000000',
-        timezone: 'Asia/Dubai',
-        operatingHours: defaultOperatingHours,
-      },
-    ]);
+  it('trims and persists the provided tenant timezone while preserving other fields', async () => {
+    await insertTenant({ name: 'Existing Tenant' });
 
     const result = await updateTenantProfile('tenant-1', {
       timezone: ' Asia/Dubai ',
     });
 
+    const expectedTenant = tenantProfile({
+      name: 'Existing Tenant',
+      timezone: 'Asia/Dubai',
+    });
     expect(result).toEqual({
       ok: true,
       data: {
-        tenant: {
-          id: 'tenant-1',
-          name: 'Existing Tenant',
-          phone: '+15550000000',
-          timezone: 'Asia/Dubai',
-          operatingHours: defaultOperatingHours,
-        },
+        tenant: expectedTenant,
       },
     });
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        timezone: 'Asia/Dubai',
-      })
-    );
+    await expectPersistedTenantProfile(expectedTenant);
   });
 
-  it('rejects invalid tenant timezones', async () => {
+  it('rejects invalid tenant timezones and leaves the tenant unchanged', async () => {
+    await insertTenant();
+
     const result = await updateTenantProfile('tenant-1', {
       timezone: 'GMT+3',
     });
@@ -239,25 +160,32 @@ describe('updateTenantProfile', () => {
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
   });
 
-  it('updates only the provided tenant operating hours', async () => {
-    const { set } = mockTenantUpdate();
+  it('persists valid tenant operating hours', async () => {
+    await insertTenant();
+    const operatingHours = {
+      ...defaultOperatingHours,
+      sunday: { status: 'open', open: '10:00', close: '14:00' },
+    } satisfies OperatingHours;
 
     const result = await updateTenantProfile('tenant-1', {
-      operatingHours: defaultOperatingHours,
+      operatingHours,
     });
 
-    expect(result.ok).toBe(true);
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operatingHours: defaultOperatingHours,
-      })
-    );
+    const expectedTenant = tenantProfile({ operatingHours });
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        tenant: expectedTenant,
+      },
+    });
+    await expectPersistedTenantProfile(expectedTenant);
   });
 
-  it('rejects incomplete tenant operating hours', async () => {
+  it('rejects incomplete tenant operating hours and leaves the tenant unchanged', async () => {
+    await insertTenant();
     const { sunday: _sunday, ...incompleteHours } = defaultOperatingHours;
 
     const result = await updateTenantProfile('tenant-1', {
@@ -268,10 +196,12 @@ describe('updateTenantProfile', () => {
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
   });
 
-  it('rejects malformed tenant operating hour intervals', async () => {
+  it('rejects malformed tenant operating hour intervals and leaves the tenant unchanged', async () => {
+    await insertTenant();
+
     const result = await updateTenantProfile('tenant-1', {
       operatingHours: {
         ...defaultOperatingHours,
@@ -283,10 +213,12 @@ describe('updateTenantProfile', () => {
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
   });
 
-  it('rejects closed tenant operating days with hours', async () => {
+  it('rejects closed tenant operating days with hours and leaves the tenant unchanged', async () => {
+    await insertTenant();
+
     const result = await updateTenantProfile('tenant-1', {
       operatingHours: {
         ...defaultOperatingHours,
@@ -298,10 +230,12 @@ describe('updateTenantProfile', () => {
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
   });
 
-  it('rejects clearing tenant operating hours', async () => {
+  it('rejects clearing tenant operating hours and leaves the tenant unchanged', async () => {
+    await insertTenant();
+
     const result = await updateTenantProfile('tenant-1', {
       operatingHours: null,
     });
@@ -310,18 +244,27 @@ describe('updateTenantProfile', () => {
       ok: false,
       errorCode: 'INVALID_TENANT_PROFILE',
     });
-    expect(update).not.toHaveBeenCalled();
+    await expectPersistedTenantProfile(tenantProfile());
+  });
+
+  it('returns update failed when the tenant profile does not exist', async () => {
+    const result = await updateTenantProfile('tenant-1', {
+      name: 'Updated Tenant',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'TENANT_UPDATE_FAILED',
+    });
   });
 });
 
 describe('getTenantProfile', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    await resetTenantTestData();
   });
 
   it('returns not found when the tenant profile does not exist', async () => {
-    mockTenantProfileRows([]);
-
     const result = await getTenantProfile('tenant-1');
 
     expect(result).toEqual({
@@ -330,21 +273,15 @@ describe('getTenantProfile', () => {
     });
   });
 
-  it('returns the full tenant profile', async () => {
-    mockTenantProfileRows();
+  it('returns the full persisted tenant profile', async () => {
+    await insertTenant();
 
     const result = await getTenantProfile('tenant-1');
 
     expect(result).toEqual({
       ok: true,
       data: {
-        tenant: {
-          id: 'tenant-1',
-          name: 'Main Tenant',
-          phone: '+15550000000',
-          timezone: 'Europe/Istanbul',
-          operatingHours: defaultOperatingHours,
-        },
+        tenant: tenantProfile(),
       },
     });
   });
