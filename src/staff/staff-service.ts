@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import { APIError } from 'better-auth';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 
 import { auth } from '../auth/auth.js';
 import type { ResolvedAuthContext } from '../auth/auth-context.js';
-import type { CreateStaffRequest } from '../contracts/staff.js';
+import type {
+  CreateStaffRequest,
+  ListManagersResponse,
+} from '../contracts/staff.js';
 import type { StaffRole } from '../contracts/roles.js';
 import { db } from '../db/index.js';
 import { tenantUsers, user } from '../db/schema.js';
@@ -100,4 +103,30 @@ export const createStaff = async (
     await cleanupCreatedUser(createdUser.id);
     return { ok: false, errorCode: 'STAFF_CREATION_FAILED' };
   }
+};
+
+export const listManagers = async (
+  tenantId: string
+): Promise<ListManagersResponse> => {
+  const managers = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      tenantId: tenantUsers.tenantId,
+      phone: tenantUsers.phone,
+    })
+    .from(tenantUsers)
+    .innerJoin(user, eq(user.id, tenantUsers.userId))
+    .where(
+      and(eq(tenantUsers.tenantId, tenantId), eq(tenantUsers.role, 'manager'))
+    )
+    .orderBy(asc(user.name), asc(user.email));
+
+  return {
+    managers: managers.map((manager) => ({
+      ...manager,
+      role: 'manager',
+    })),
+  };
 };

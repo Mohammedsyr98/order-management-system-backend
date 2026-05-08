@@ -23,9 +23,13 @@ vi.mock('../auth/auth.js', () => ({
 const { auth } = await import('../auth/auth.js');
 const { db } = await import('../db/index.js');
 const { tenantUsers, user: authUsers } = await import('../db/schema.js');
-const { insertTenant, resetTenantTestData } =
-  await import('../test/test-db.js');
-const { createStaff } = await import('./staff-service.js');
+const {
+  insertTenant,
+  insertTenantMembership,
+  insertUser,
+  resetTenantTestData,
+} = await import('../test/test-db.js');
+const { createStaff, listManagers } = await import('./staff-service.js');
 
 const signUpEmail = vi.mocked(auth.api.signUpEmail);
 
@@ -418,5 +422,83 @@ describe('createStaff', () => {
     });
     await expect(getPersistedAuthUser()).resolves.toBeNull();
     await expect(getPersistedMembership()).resolves.toBeNull();
+  });
+});
+
+describe('listManagers', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetTenantTestData();
+  });
+
+  it('lists only managers in the authenticated tenant with identity and membership data', async () => {
+    await insertTenant();
+    await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
+    await insertUser({
+      id: 'manager-2',
+      name: 'Beta Manager',
+      email: 'beta@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-2',
+      userId: 'manager-2',
+      role: 'manager',
+      phone: null,
+    });
+    await insertUser({
+      id: 'manager-1',
+      name: 'Alpha Manager',
+      email: 'alpha@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-1',
+      userId: 'manager-1',
+      role: 'manager',
+      phone: '+15551234567',
+    });
+    await insertUser({
+      id: 'courier-1',
+      name: 'Courier User',
+      email: 'courier@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-courier-1',
+      userId: 'courier-1',
+      role: 'courier',
+      phone: '+15557654321',
+    });
+    await insertUser({
+      id: 'other-tenant-manager-1',
+      name: 'Other Tenant Manager',
+      email: 'other@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-other-manager-1',
+      tenantId: 'tenant-2',
+      userId: 'other-tenant-manager-1',
+      role: 'manager',
+      phone: '+15550000002',
+    });
+
+    await expect(listManagers('tenant-1')).resolves.toEqual({
+      managers: [
+        {
+          id: 'manager-1',
+          name: 'Alpha Manager',
+          email: 'alpha@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: '+15551234567',
+        },
+        {
+          id: 'manager-2',
+          name: 'Beta Manager',
+          email: 'beta@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: null,
+        },
+      ],
+    });
   });
 });
