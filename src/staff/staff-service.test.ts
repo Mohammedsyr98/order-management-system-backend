@@ -29,7 +29,8 @@ const {
   insertUser,
   resetTenantTestData,
 } = await import('../test/test-db.js');
-const { createStaff, listManagers } = await import('./staff-service.js');
+const { createStaff, listManagers, updateManagerProfile } =
+  await import('./staff-service.js');
 
 const signUpEmail = vi.mocked(auth.api.signUpEmail);
 
@@ -499,6 +500,154 @@ describe('listManagers', () => {
           phone: null,
         },
       ],
+    });
+  });
+});
+
+describe('updateManagerProfile', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetTenantTestData();
+  });
+
+  it('updates a manager name and phone in the authenticated tenant', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'manager-1',
+      name: 'Original Manager',
+      email: 'manager@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-1',
+      userId: 'manager-1',
+      role: 'manager',
+      phone: '+15550000000',
+    });
+
+    const result = await updateManagerProfile('tenant-1', 'manager-1', {
+      name: ' Updated Manager ',
+      phone: ' +15551234567 ',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        manager: {
+          id: 'manager-1',
+          name: 'Updated Manager',
+          email: 'manager@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: '+15551234567',
+        },
+      },
+    });
+    await expect(getPersistedAuthUser('manager-1')).resolves.toEqual({
+      id: 'manager-1',
+      name: 'Updated Manager',
+      email: 'manager@example.com',
+    });
+    await expect(getPersistedMembership('manager-1')).resolves.toEqual({
+      tenantId: 'tenant-1',
+      userId: 'manager-1',
+      role: 'manager',
+      phone: '+15551234567',
+    });
+  });
+
+  it('leaves omitted manager profile fields unchanged', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'manager-1',
+      name: 'Original Manager',
+      email: 'manager@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-1',
+      userId: 'manager-1',
+      role: 'manager',
+      phone: '+15550000000',
+    });
+
+    const result = await updateManagerProfile('tenant-1', 'manager-1', {
+      phone: null,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        manager: {
+          id: 'manager-1',
+          name: 'Original Manager',
+          email: 'manager@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: null,
+        },
+      },
+    });
+    await expect(getPersistedAuthUser('manager-1')).resolves.toEqual({
+      id: 'manager-1',
+      name: 'Original Manager',
+      email: 'manager@example.com',
+    });
+  });
+
+  it.each([
+    ['courier', 'courier-1', 'courier', 'tenant-1'],
+    ['owner', 'owner-2', 'owner', 'tenant-1'],
+    ['other tenant manager', 'manager-2', 'manager', 'tenant-2'],
+  ] as const)(
+    'rejects updates for a %s target',
+    async (_label, userId, role, tenantId) => {
+      await insertTenant();
+      await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
+      await insertUser({
+        id: userId,
+        name: 'Target User',
+        email: `${userId}@example.com`,
+      });
+      await insertTenantMembership({
+        id: `tenant-user-${userId}`,
+        tenantId,
+        userId,
+        role,
+        phone: '+15550000000',
+      });
+
+      const result = await updateManagerProfile('tenant-1', userId, {
+        name: 'Blocked Update',
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        errorCode: 'STAFF_MANAGER_NOT_FOUND',
+      });
+      await expect(getPersistedAuthUser(userId)).resolves.toEqual({
+        id: userId,
+        name: 'Target User',
+        email: `${userId}@example.com`,
+      });
+      await expect(getPersistedMembership(userId)).resolves.toEqual({
+        tenantId,
+        userId,
+        role,
+        phone: '+15550000000',
+      });
+    }
+  );
+
+  it('rejects protected manager profile fields', async () => {
+    await insertTenant();
+
+    const result = await updateManagerProfile('tenant-1', 'manager-1', {
+      name: 'Updated Manager',
+      role: 'courier',
+    } as unknown as Parameters<typeof updateManagerProfile>[2]);
+
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'INVALID_STAFF_REQUEST',
     });
   });
 });

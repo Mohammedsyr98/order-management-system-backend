@@ -8,12 +8,20 @@ import type { ResolvedAuthContext } from '../auth/auth-context.js';
 import type {
   CreateStaffRequest,
   ListManagersResponse,
+  ManagerListItem,
+  UpdateManagerProfileRequest,
 } from '../contracts/staff.js';
 import type { StaffRole } from '../contracts/roles.js';
 import { db } from '../db/index.js';
 import { tenantUsers, user } from '../db/schema.js';
-import type { CreateStaffResult } from './staff-types.js';
-import { parseCreateStaffRequest } from './staff-validation.js';
+import type {
+  CreateStaffResult,
+  UpdateManagerProfileResult,
+} from './staff-types.js';
+import {
+  parseCreateStaffRequest,
+  parseUpdateManagerProfileRequest,
+} from './staff-validation.js';
 
 const cleanupCreatedUser = async (userId: string) => {
   await db.delete(user).where(eq(user.id, userId));
@@ -25,6 +33,41 @@ const canCreateStaffRole = (
 ) =>
   creatorRole === 'owner' ||
   (creatorRole === 'manager' && staffRole === 'courier');
+
+const managerProfileSelect = {
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  tenantId: tenantUsers.tenantId,
+  phone: tenantUsers.phone,
+};
+
+const findManagerProfile = async (
+  tenantId: string,
+  managerId: string
+): Promise<ManagerListItem | null> => {
+  const [manager] = await db
+    .select(managerProfileSelect)
+    .from(tenantUsers)
+    .innerJoin(user, eq(user.id, tenantUsers.userId))
+    .where(
+      and(
+        eq(tenantUsers.tenantId, tenantId),
+        eq(tenantUsers.userId, managerId),
+        eq(tenantUsers.role, 'manager')
+      )
+    )
+    .limit(1);
+
+  if (!manager) {
+    return null;
+  }
+
+  return {
+    ...manager,
+    role: 'manager',
+  };
+};
 
 export const createStaff = async (
   authContext: ResolvedAuthContext,
@@ -109,13 +152,7 @@ export const listManagers = async (
   tenantId: string
 ): Promise<ListManagersResponse> => {
   const managers = await db
-    .select({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      tenantId: tenantUsers.tenantId,
-      phone: tenantUsers.phone,
-    })
+    .select(managerProfileSelect)
     .from(tenantUsers)
     .innerJoin(user, eq(user.id, tenantUsers.userId))
     .where(
@@ -128,5 +165,69 @@ export const listManagers = async (
       ...manager,
       role: 'manager',
     })),
+  };
+};
+
+export const updateManagerProfile = async (
+  tenantId: string,
+  managerId: string,
+  request: UpdateManagerProfileRequest
+): Promise<UpdateManagerProfileResult> => {
+  const validation = parseUpdateManagerProfileRequest(request);
+
+  if (!validation.success) {
+    return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
+  }
+
+  const manager = await findManagerProfile(tenantId, managerId);
+
+  if (!manager) {
+    return { ok: false, errorCode: 'STAFF_MANAGER_NOT_FOUND' };
+  }
+
+  const update = validation.data;
+  const updatedAt = new Date();
+
+  if (update.phone !== undefined) {
+    const [updatedMembership] = await db
+      .update(tenantUsers)
+      .set({ phone: update.phone, updatedAt })
+      .where(
+        and(
+          eq(tenantUsers.tenantId, tenantId),
+          eq(tenantUsers.userId, managerId),
+          eq(tenantUsers.role, 'manager')
+        )
+      )
+      .returning({ userId: tenantUsers.userId });
+
+    if (!updatedMembership) {
+      return { ok: false, errorCode: 'STAFF_UPDATE_FAILED' };
+    }
+  }
+
+  if (update.name !== undefined) {
+    const [updatedUser] = await db
+      .update(user)
+      .set({ name: update.name, updatedAt })
+      .where(eq(user.id, managerId))
+      .returning({ id: user.id });
+
+    if (!updatedUser) {
+      return { ok: false, errorCode: 'STAFF_UPDATE_FAILED' };
+    }
+  }
+
+  const updatedManager = await findManagerProfile(tenantId, managerId);
+
+  if (!updatedManager) {
+    return { ok: false, errorCode: 'STAFF_UPDATE_FAILED' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      manager: updatedManager,
+    },
   };
 };

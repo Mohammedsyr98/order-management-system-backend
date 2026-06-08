@@ -2,7 +2,10 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ListManagersResponse } from '../contracts/staff.js';
+import type {
+  ListManagersResponse,
+  UpdateManagerProfileResponse,
+} from '../contracts/staff.js';
 
 type RouteAuthContext = {
   userId: string;
@@ -76,13 +79,16 @@ vi.mock('../auth/auth-context.js', () => ({
 vi.mock('./staff-service.js', () => ({
   createStaff: vi.fn(),
   listManagers: vi.fn(),
+  updateManagerProfile: vi.fn(),
 }));
 
-const { createStaff, listManagers } = await import('./staff-service.js');
+const { createStaff, listManagers, updateManagerProfile } =
+  await import('./staff-service.js');
 const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
 const listManagersMock = vi.mocked(listManagers);
+const updateManagerProfileMock = vi.mocked(updateManagerProfile);
 
 const createApp = () => {
   const app = express();
@@ -125,6 +131,17 @@ const listedManagers: ListManagersResponse = {
   ],
 };
 
+const updatedManager: UpdateManagerProfileResponse = {
+  manager: {
+    id: 'manager-1',
+    name: 'Updated Manager',
+    email: 'manager@example.com',
+    tenantId: 'tenant-1',
+    role: 'manager',
+    phone: '+15551234567',
+  },
+};
+
 describe('staff routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -138,6 +155,10 @@ describe('staff routes', () => {
       data: createdStaff,
     });
     listManagersMock.mockResolvedValue(listedManagers);
+    updateManagerProfileMock.mockResolvedValue({
+      ok: true,
+      data: updatedManager,
+    });
   });
 
   it('lists managers for an owner tenant', async () => {
@@ -192,6 +213,51 @@ describe('staff routes', () => {
         message: 'You do not have permission to perform this action.',
       });
       expect(listManagersMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it('updates a manager profile through the service and returns the updated manager payload', async () => {
+    const requestBody = {
+      name: 'Updated Manager',
+      phone: '+15551234567',
+    };
+
+    const response = await request(createApp())
+      .patch('/api/staff/managers/manager-1')
+      .send(requestBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(updatedManager);
+    expect(updateManagerProfileMock).toHaveBeenCalledWith(
+      'tenant-1',
+      'manager-1',
+      requestBody
+    );
+  });
+
+  it.each([
+    ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
+    ['STAFF_MANAGER_NOT_FOUND', 404, 'Manager could not be found.'],
+    ['STAFF_UPDATE_FAILED', 422, 'Staff account could not be updated.'],
+  ] as const)(
+    'maps %s manager update service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      updateManagerProfileMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp())
+        .patch('/api/staff/managers/manager-1')
+        .send({
+          name: 'Updated Manager',
+        });
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
     }
   );
 
