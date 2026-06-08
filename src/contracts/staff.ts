@@ -35,3 +35,12 @@ export type ManagerListItem = {
 export type ListManagersResponse = {
   managers: ManagerListItem[];
 };
+
+export type UpdateManagerProfileRequest = {
+  name?: string;
+  phone?: string | null;
+};
+
+export type UpdateManagerProfileResponse = {
+  manager: ManagerListItem;
+};
