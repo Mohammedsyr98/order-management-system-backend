@@ -12,10 +12,14 @@ import type {
 import { sendApiError } from '../http/api-errors.js';
 import {
   createStaff,
+  deleteManager,
   listManagers,
   updateManagerProfile,
 } from './staff-service.js';
-import type { UpdateManagerProfileErrorCode } from './staff-types.js';
+import type {
+  DeleteManagerErrorCode,
+  UpdateManagerProfileErrorCode,
+} from './staff-types.js';
 
 export const staffRouter = Router();
 
@@ -27,6 +31,9 @@ const updateManagerProfileStatus = (
     : errorCode === 'STAFF_MANAGER_NOT_FOUND'
       ? 404
       : 422;
+
+const deleteManagerStatus = (errorCode: DeleteManagerErrorCode) =>
+  errorCode === 'STAFF_MANAGER_NOT_FOUND' ? 404 : 422;
 
 staffRouter.get(
   '/managers',
@@ -70,6 +77,34 @@ staffRouter.patch(
     }
 
     res.json(result.data);
+  }
+);
+
+staffRouter.delete(
+  '/managers/:managerId',
+  requireAuthContext,
+  requireOwnerAccess,
+  async (req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const { managerId } = req.params;
+
+    if (typeof managerId !== 'string') {
+      sendApiError(res, 400, 'INVALID_STAFF_REQUEST');
+      return;
+    }
+
+    const result = await deleteManager(context.tenantId, managerId);
+
+    if (!result.ok) {
+      sendApiError(
+        res,
+        deleteManagerStatus(result.errorCode),
+        result.errorCode
+      );
+      return;
+    }
+
+    res.status(204).end();
   }
 );
 

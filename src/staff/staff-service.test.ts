@@ -29,7 +29,7 @@ const {
   insertUser,
   resetTenantTestData,
 } = await import('../test/test-db.js');
-const { createStaff, listManagers, updateManagerProfile } =
+const { createStaff, deleteManager, listManagers, updateManagerProfile } =
   await import('./staff-service.js');
 
 const signUpEmail = vi.mocked(auth.api.signUpEmail);
@@ -650,4 +650,70 @@ describe('updateManagerProfile', () => {
       errorCode: 'INVALID_STAFF_REQUEST',
     });
   });
+});
+
+describe('deleteManager', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetTenantTestData();
+  });
+
+  it('deletes a manager auth user and cascades their tenant membership', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'manager-1',
+      name: 'Manager User',
+      email: 'manager@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-1',
+      userId: 'manager-1',
+      role: 'manager',
+    });
+
+    await expect(deleteManager('tenant-1', 'manager-1')).resolves.toEqual({
+      ok: true,
+    });
+    await expect(getPersistedAuthUser('manager-1')).resolves.toBeNull();
+    await expect(getPersistedMembership('manager-1')).resolves.toBeNull();
+  });
+
+  it.each([
+    ['courier', 'courier-1', 'courier', 'tenant-1'],
+    ['owner', 'owner-2', 'owner', 'tenant-1'],
+    ['other tenant manager', 'manager-2', 'manager', 'tenant-2'],
+  ] as const)(
+    'rejects deletion of a %s target',
+    async (_label, userId, role, tenantId) => {
+      await insertTenant();
+      await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
+      await insertUser({
+        id: userId,
+        name: 'Target User',
+        email: `${userId}@example.com`,
+      });
+      await insertTenantMembership({
+        id: `tenant-user-${userId}`,
+        tenantId,
+        userId,
+        role,
+      });
+
+      await expect(deleteManager('tenant-1', userId)).resolves.toEqual({
+        ok: false,
+        errorCode: 'STAFF_MANAGER_NOT_FOUND',
+      });
+      await expect(getPersistedAuthUser(userId)).resolves.toEqual({
+        id: userId,
+        name: 'Target User',
+        email: `${userId}@example.com`,
+      });
+      await expect(getPersistedMembership(userId)).resolves.toEqual({
+        tenantId,
+        userId,
+        role,
+        phone: null,
+      });
+    }
+  );
 });

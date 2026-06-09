@@ -17,6 +17,7 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   STAFF_MANAGER_NOT_FOUND: 'Manager could not be found.',
   STAFF_EMAIL_ALREADY_EXISTS: 'A user with this email already exists.',
   STAFF_UPDATE_FAILED: 'Staff account could not be updated.',
+  STAFF_DELETE_FAILED: 'Staff account could not be deleted.',
   STAFF_CREATION_FAILED: 'Staff account could not be created.',
 };
 

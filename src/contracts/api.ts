@@ -12,6 +12,7 @@ export type ApiErrorCode =
   | 'STAFF_MANAGER_NOT_FOUND'
   | 'STAFF_EMAIL_ALREADY_EXISTS'
   | 'STAFF_UPDATE_FAILED'
+  | 'STAFF_DELETE_FAILED'
   | 'STAFF_CREATION_FAILED';
 
 export type ApiErrorResponse = {
