@@ -24,3 +24,12 @@ export type UpdateManagerProfileErrorCode = Extract<
 export type UpdateManagerProfileResult =
   | { ok: true; data: UpdateManagerProfileResponse }
   | { ok: false; errorCode: UpdateManagerProfileErrorCode };
+
+export type DeleteManagerErrorCode = Extract<
+  ApiErrorCode,
+  'STAFF_MANAGER_NOT_FOUND' | 'STAFF_DELETE_FAILED'
+>;
+
+export type DeleteManagerResult =
+  | { ok: true }
+  | { ok: false; errorCode: DeleteManagerErrorCode };

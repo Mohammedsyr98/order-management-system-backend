@@ -78,15 +78,17 @@ vi.mock('../auth/auth-context.js', () => ({
 
 vi.mock('./staff-service.js', () => ({
   createStaff: vi.fn(),
+  deleteManager: vi.fn(),
   listManagers: vi.fn(),
   updateManagerProfile: vi.fn(),
 }));
 
-const { createStaff, listManagers, updateManagerProfile } =
+const { createStaff, deleteManager, listManagers, updateManagerProfile } =
   await import('./staff-service.js');
 const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
+const deleteManagerMock = vi.mocked(deleteManager);
 const listManagersMock = vi.mocked(listManagers);
 const updateManagerProfileMock = vi.mocked(updateManagerProfile);
 
@@ -154,6 +156,7 @@ describe('staff routes', () => {
       ok: true,
       data: createdStaff,
     });
+    deleteManagerMock.mockResolvedValue({ ok: true });
     listManagersMock.mockResolvedValue(listedManagers);
     updateManagerProfileMock.mockResolvedValue({
       ok: true,
@@ -252,6 +255,39 @@ describe('staff routes', () => {
         .send({
           name: 'Updated Manager',
         });
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
+    }
+  );
+
+  it('deletes a manager through the service and returns no content', async () => {
+    const response = await request(createApp()).delete(
+      '/api/staff/managers/manager-1'
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.body).toEqual({});
+    expect(deleteManagerMock).toHaveBeenCalledWith('tenant-1', 'manager-1');
+  });
+
+  it.each([
+    ['STAFF_MANAGER_NOT_FOUND', 404, 'Manager could not be found.'],
+    ['STAFF_DELETE_FAILED', 422, 'Staff account could not be deleted.'],
+  ] as const)(
+    'maps %s manager deletion service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      deleteManagerMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp()).delete(
+        '/api/staff/managers/manager-1'
+      );
 
       expect(response.status).toBe(status);
       expect(response.body.error).toEqual({

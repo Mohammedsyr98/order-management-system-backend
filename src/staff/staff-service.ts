@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { APIError } from 'better-auth';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { auth } from '../auth/auth.js';
 import type { ResolvedAuthContext } from '../auth/auth-context.js';
@@ -16,6 +16,7 @@ import { db } from '../db/index.js';
 import { tenantUsers, user } from '../db/schema.js';
 import type {
   CreateStaffResult,
+  DeleteManagerResult,
   UpdateManagerProfileResult,
 } from './staff-types.js';
 import {
@@ -230,4 +231,31 @@ export const updateManagerProfile = async (
       manager: updatedManager,
     },
   };
+};
+
+export const deleteManager = async (
+  tenantId: string,
+  managerId: string
+): Promise<DeleteManagerResult> => {
+  try {
+    const managerIds = db
+      .select({ userId: tenantUsers.userId })
+      .from(tenantUsers)
+      .where(
+        and(eq(tenantUsers.tenantId, tenantId), eq(tenantUsers.role, 'manager'))
+      );
+
+    const [deletedManager] = await db
+      .delete(user)
+      .where(and(eq(user.id, managerId), inArray(user.id, managerIds)))
+      .returning({ id: user.id });
+
+    if (!deletedManager) {
+      return { ok: false, errorCode: 'STAFF_MANAGER_NOT_FOUND' };
+    }
+
+    return { ok: true };
+  } catch {
+    return { ok: false, errorCode: 'STAFF_DELETE_FAILED' };
+  }
 };

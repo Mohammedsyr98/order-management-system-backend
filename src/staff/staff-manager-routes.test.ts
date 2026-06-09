@@ -433,4 +433,101 @@ describe('staff manager routes', () => {
       }
     );
   });
+
+  describe('staff manager deletion routes', () => {
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      routeAuth.context = {
+        userId: 'owner-1',
+        tenantId: 'tenant-1',
+        role: 'owner',
+      };
+      await resetTenantTestData();
+    });
+
+    it('allows an owner to delete a manager in their tenant', async () => {
+      await seedManagerProfileData();
+
+      const response = await request(createApp()).delete(
+        '/api/staff/managers/manager-1'
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.body).toEqual({});
+    });
+
+    it.each(['manager', 'courier'] as const)(
+      'rejects manager deletion from %s users',
+      async (role) => {
+        await seedManagerProfileData();
+        routeAuth.context = {
+          userId: `${role}-1`,
+          tenantId: 'tenant-1',
+          role,
+        };
+
+        const response = await request(createApp()).delete(
+          '/api/staff/managers/manager-1'
+        );
+
+        expect(response.status).toBe(403);
+        expect(response.body.error).toEqual({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.',
+        });
+      }
+    );
+
+    it('rejects unauthenticated manager deletion requests', async () => {
+      await seedManagerProfileData();
+      routeAuth.context = null;
+
+      const response = await request(createApp()).delete(
+        '/api/staff/managers/manager-1'
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({
+        code: 'UNAUTHENTICATED',
+        message: 'You must sign in to perform this action.',
+      });
+    });
+
+    it('rejects manager deletion for authenticated users without tenant membership', async () => {
+      await seedManagerProfileData();
+      routeAuth.context = 'missing-membership';
+
+      const response = await request(createApp()).delete(
+        '/api/staff/managers/manager-1'
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toEqual({
+        code: 'TENANT_MEMBERSHIP_REQUIRED',
+        message:
+          'Your account is not linked to a tenant. Contact support for help.',
+      });
+    });
+
+    it.each([
+      ['courier', 'courier-1'],
+      ['owner', 'owner-target-1'],
+      ['other tenant manager', 'other-tenant-manager-1'],
+    ] as const)(
+      'returns not found when deleting a %s',
+      async (_label, managerId) => {
+        await seedManagerProfileData();
+
+        const response = await request(createApp()).delete(
+          `/api/staff/managers/${managerId}`
+        );
+
+        expect(response.status).toBe(404);
+        expect(response.body.error).toEqual({
+          code: 'STAFF_MANAGER_NOT_FOUND',
+          message: 'Manager could not be found.',
+        });
+      }
+    );
+  });
 });
