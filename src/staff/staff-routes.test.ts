@@ -1,4 +1,5 @@
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -74,6 +75,34 @@ vi.mock('../auth/auth-context.js', () => ({
 
     next();
   }),
+  requireTenantRole: vi.fn(
+    (allowedRoles: RouteAuthContext['role'][]) =>
+      (_req: Request, res: Response, next: NextFunction) => {
+        const context = res.locals.authContext as RouteAuthContext | undefined;
+
+        if (!context) {
+          res.status(401).json({
+            error: {
+              code: 'UNAUTHENTICATED',
+              message: 'You must sign in to perform this action.',
+            },
+          });
+          return;
+        }
+
+        if (!allowedRoles.includes(context.role)) {
+          res.status(403).json({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'You do not have permission to perform this action.',
+            },
+          });
+          return;
+        }
+
+        next();
+      }
+  ),
 }));
 
 vi.mock('./staff-service.js', () => ({
@@ -81,16 +110,23 @@ vi.mock('./staff-service.js', () => ({
   deleteManager: vi.fn(),
   listManagers: vi.fn(),
   updateManagerProfile: vi.fn(),
+  updateOwnStaffProfile: vi.fn(),
 }));
 
-const { createStaff, deleteManager, listManagers, updateManagerProfile } =
-  await import('./staff-service.js');
+const {
+  createStaff,
+  deleteManager,
+  listManagers,
+  updateManagerProfile,
+  updateOwnStaffProfile,
+} = await import('./staff-service.js');
 const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
 const deleteManagerMock = vi.mocked(deleteManager);
 const listManagersMock = vi.mocked(listManagers);
 const updateManagerProfileMock = vi.mocked(updateManagerProfile);
+const updateOwnStaffProfileMock = vi.mocked(updateOwnStaffProfile);
 
 const createApp = () => {
   const app = express();
@@ -144,6 +180,10 @@ const updatedManager: UpdateManagerProfileResponse = {
   },
 };
 
+const updatedStaff = {
+  staff: updatedManager.manager,
+};
+
 describe('staff routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -161,6 +201,10 @@ describe('staff routes', () => {
     updateManagerProfileMock.mockResolvedValue({
       ok: true,
       data: updatedManager,
+    });
+    updateOwnStaffProfileMock.mockResolvedValue({
+      ok: true,
+      data: updatedStaff,
     });
   });
 
@@ -255,6 +299,111 @@ describe('staff routes', () => {
         .send({
           name: 'Updated Manager',
         });
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
+    }
+  );
+
+  it('updates the authenticated manager through the self-profile service', async () => {
+    routeAuth.context = {
+      userId: 'manager-1',
+      tenantId: 'tenant-1',
+      role: 'manager',
+    };
+    const requestBody = {
+      name: 'Updated Manager',
+      phone: '+15551234567',
+    };
+
+    const response = await request(createApp())
+      .patch('/api/staff/me')
+      .send(requestBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(updatedStaff);
+    expect(updateOwnStaffProfileMock).toHaveBeenCalledWith(
+      routeAuth.context,
+      requestBody
+    );
+  });
+
+  it.each(['owner', 'courier'] as const)(
+    'rejects self-profile updates from %s users',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+
+      const response = await request(createApp())
+        .patch('/api/staff/me')
+        .send({ name: 'Blocked Update' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toEqual({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to perform this action.',
+      });
+      expect(updateOwnStaffProfileMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects unauthenticated self-profile update requests', async () => {
+    routeAuth.context = null;
+
+    const response = await request(createApp())
+      .patch('/api/staff/me')
+      .send({ name: 'Blocked Update' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toEqual({
+      code: 'UNAUTHENTICATED',
+      message: 'You must sign in to perform this action.',
+    });
+    expect(updateOwnStaffProfileMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects self-profile updates without tenant membership', async () => {
+    routeAuth.context = 'missing-membership';
+
+    const response = await request(createApp())
+      .patch('/api/staff/me')
+      .send({ name: 'Blocked Update' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'TENANT_MEMBERSHIP_REQUIRED',
+      message:
+        'Your account is not linked to a tenant. Contact support for help.',
+    });
+    expect(updateOwnStaffProfileMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
+    ['STAFF_MANAGER_NOT_FOUND', 404, 'Manager could not be found.'],
+    ['STAFF_UPDATE_FAILED', 422, 'Staff account could not be updated.'],
+  ] as const)(
+    'maps %s self-profile service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      routeAuth.context = {
+        userId: 'manager-1',
+        tenantId: 'tenant-1',
+        role: 'manager',
+      };
+      updateOwnStaffProfileMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp())
+        .patch('/api/staff/me')
+        .send({ name: 'Updated Manager' });
 
       expect(response.status).toBe(status);
       expect(response.body.error).toEqual({

@@ -23,23 +23,33 @@ export type CreateStaffResponse = {
   };
 };
 
-export type ManagerListItem = {
+export type StaffProfile = {
   id: string;
   name: string;
   email: string;
   tenantId: string;
-  role: 'manager';
+  role: StaffRole;
   phone: string | null;
+};
+
+export type ManagerListItem = StaffProfile & {
+  role: 'manager';
 };
 
 export type ListManagersResponse = {
   managers: ManagerListItem[];
 };
 
-export type UpdateManagerProfileRequest = {
+export type UpdateStaffProfileRequest = {
   name?: string;
   phone?: string | null;
 };
+
+export type UpdateStaffProfileResponse = {
+  staff: StaffProfile;
+};
+
+export type UpdateManagerProfileRequest = UpdateStaffProfileRequest;
 
 export type UpdateManagerProfileResponse = {
   manager: ManagerListItem;

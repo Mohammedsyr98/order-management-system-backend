@@ -2,6 +2,7 @@ import type { ApiErrorCode } from '../contracts/api.js';
 import type {
   CreateStaffResponse,
   UpdateManagerProfileResponse,
+  UpdateStaffProfileResponse,
 } from '../contracts/staff.js';
 
 export type StaffCreationErrorCode = Extract<
@@ -23,6 +24,10 @@ export type UpdateManagerProfileErrorCode = Extract<
 
 export type UpdateManagerProfileResult =
   | { ok: true; data: UpdateManagerProfileResponse }
+  | { ok: false; errorCode: UpdateManagerProfileErrorCode };
+
+export type UpdateStaffProfileResult =
+  | { ok: true; data: UpdateStaffProfileResponse }
   | { ok: false; errorCode: UpdateManagerProfileErrorCode };
 
 export type DeleteManagerErrorCode = Extract<

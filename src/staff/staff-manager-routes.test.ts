@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -78,6 +79,34 @@ vi.mock('../auth/auth-context.js', () => ({
 
     next();
   }),
+  requireTenantRole: vi.fn(
+    (allowedRoles: RouteAuthContext['role'][]) =>
+      (_req: Request, res: Response, next: NextFunction) => {
+        const context = res.locals.authContext as RouteAuthContext | undefined;
+
+        if (!context) {
+          res.status(401).json({
+            error: {
+              code: 'UNAUTHENTICATED',
+              message: 'You must sign in to perform this action.',
+            },
+          });
+          return;
+        }
+
+        if (!allowedRoles.includes(context.role)) {
+          res.status(403).json({
+            error: {
+              code: 'FORBIDDEN',
+              message: 'You do not have permission to perform this action.',
+            },
+          });
+          return;
+        }
+
+        next();
+      }
+  ),
 }));
 
 const {
@@ -432,6 +461,142 @@ describe('staff manager routes', () => {
         });
       }
     );
+  });
+
+  describe('staff self-profile update routes', () => {
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      routeAuth.context = {
+        userId: 'manager-1',
+        tenantId: 'tenant-1',
+        role: 'manager',
+      };
+      await resetTenantTestData();
+    });
+
+    it('allows a manager to update their own name and phone', async () => {
+      await seedManagerProfileData();
+
+      const response = await request(createApp()).patch('/api/staff/me').send({
+        name: ' Updated Manager ',
+        phone: ' +15551234567 ',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        staff: {
+          id: 'manager-1',
+          name: 'Updated Manager',
+          email: 'manager@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: '+15551234567',
+        },
+      });
+    });
+
+    it.each([
+      ['null', null],
+      ['blank string', '   '],
+    ] as const)(
+      'allows a manager to clear their own phone with %s',
+      async (_label, phone) => {
+        await seedManagerProfileData();
+
+        const response = await request(createApp())
+          .patch('/api/staff/me')
+          .send({ phone });
+
+        expect(response.status).toBe(200);
+        expect(response.body.staff).toEqual({
+          id: 'manager-1',
+          name: 'Original Manager',
+          email: 'manager@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: null,
+        });
+      }
+    );
+
+    it.each([
+      ['empty body', {}],
+      ['blank name', { name: '   ' }],
+      ['email', { email: 'new@example.com' }],
+      ['password', { password: 'new-password' }],
+      ['role', { role: 'courier' }],
+      ['tenantId', { tenantId: 'tenant-2' }],
+      ['userId', { userId: 'other-tenant-manager-1' }],
+      ['managerId', { managerId: 'other-tenant-manager-1' }],
+    ] as const)(
+      'rejects invalid self-profile update body with %s',
+      async (_label, body) => {
+        await seedManagerProfileData();
+
+        const response = await request(createApp())
+          .patch('/api/staff/me')
+          .send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toEqual({
+          code: 'INVALID_STAFF_REQUEST',
+          message: 'Staff request is invalid.',
+        });
+      }
+    );
+
+    it.each(['owner', 'courier'] as const)(
+      'rejects self-profile updates from %s users',
+      async (role) => {
+        await seedManagerProfileData();
+        routeAuth.context = {
+          userId: `${role}-1`,
+          tenantId: 'tenant-1',
+          role,
+        };
+
+        const response = await request(createApp())
+          .patch('/api/staff/me')
+          .send({ name: 'Blocked Update' });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error).toEqual({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.',
+        });
+      }
+    );
+
+    it('rejects unauthenticated self-profile update requests', async () => {
+      await seedManagerProfileData();
+      routeAuth.context = null;
+
+      const response = await request(createApp())
+        .patch('/api/staff/me')
+        .send({ name: 'Blocked Update' });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({
+        code: 'UNAUTHENTICATED',
+        message: 'You must sign in to perform this action.',
+      });
+    });
+
+    it('rejects self-profile updates without tenant membership', async () => {
+      await seedManagerProfileData();
+      routeAuth.context = 'missing-membership';
+
+      const response = await request(createApp())
+        .patch('/api/staff/me')
+        .send({ name: 'Blocked Update' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toEqual({
+        code: 'TENANT_MEMBERSHIP_REQUIRED',
+        message:
+          'Your account is not linked to a tenant. Contact support for help.',
+      });
+    });
   });
 
   describe('staff manager deletion routes', () => {

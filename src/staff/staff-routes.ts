@@ -3,11 +3,13 @@ import { Router } from 'express';
 import {
   requireAuthContext,
   requireOwnerAccess,
+  requireTenantRole,
   type ResolvedAuthContext,
 } from '../auth/auth-context.js';
 import type {
   CreateStaffRequest,
   UpdateManagerProfileRequest,
+  UpdateStaffProfileRequest,
 } from '../contracts/staff.js';
 import { sendApiError } from '../http/api-errors.js';
 import {
@@ -15,6 +17,7 @@ import {
   deleteManager,
   listManagers,
   updateManagerProfile,
+  updateOwnStaffProfile,
 } from './staff-service.js';
 import type {
   DeleteManagerErrorCode,
@@ -22,6 +25,8 @@ import type {
 } from './staff-types.js';
 
 export const staffRouter = Router();
+
+const requireManagerSelfAccess = requireTenantRole(['manager']);
 
 const updateManagerProfileStatus = (
   errorCode: UpdateManagerProfileErrorCode
@@ -34,6 +39,30 @@ const updateManagerProfileStatus = (
 
 const deleteManagerStatus = (errorCode: DeleteManagerErrorCode) =>
   errorCode === 'STAFF_MANAGER_NOT_FOUND' ? 404 : 422;
+
+staffRouter.patch(
+  '/me',
+  requireAuthContext,
+  requireManagerSelfAccess,
+  async (req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const result = await updateOwnStaffProfile(
+      context,
+      req.body as UpdateStaffProfileRequest
+    );
+
+    if (!result.ok) {
+      sendApiError(
+        res,
+        updateManagerProfileStatus(result.errorCode),
+        result.errorCode
+      );
+      return;
+    }
+
+    res.json(result.data);
+  }
+);
 
 staffRouter.get(
   '/managers',
