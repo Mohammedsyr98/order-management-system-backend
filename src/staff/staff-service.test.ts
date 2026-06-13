@@ -29,8 +29,13 @@ const {
   insertUser,
   resetTenantTestData,
 } = await import('../test/test-db.js');
-const { createStaff, deleteManager, listManagers, updateManagerProfile } =
-  await import('./staff-service.js');
+const {
+  createStaff,
+  deleteManager,
+  listManagers,
+  updateManagerProfile,
+  updateOwnStaffProfile,
+} = await import('./staff-service.js');
 
 const signUpEmail = vi.mocked(auth.api.signUpEmail);
 
@@ -648,6 +653,91 @@ describe('updateManagerProfile', () => {
     expect(result).toEqual({
       ok: false,
       errorCode: 'INVALID_STAFF_REQUEST',
+    });
+  });
+});
+
+describe('updateOwnStaffProfile', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetTenantTestData();
+  });
+
+  it('updates the authenticated manager and returns a role-neutral staff profile', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'manager-1',
+      name: 'Original Manager',
+      email: 'manager@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-1',
+      userId: 'manager-1',
+      role: 'manager',
+      phone: '+15550000000',
+    });
+
+    const result = await updateOwnStaffProfile(managerContext, {
+      name: ' Updated Manager ',
+      phone: ' +15551234567 ',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        staff: {
+          id: 'manager-1',
+          name: 'Updated Manager',
+          email: 'manager@example.com',
+          tenantId: 'tenant-1',
+          role: 'manager',
+          phone: '+15551234567',
+        },
+      },
+    });
+  });
+
+  it('rejects caller-supplied target IDs without updating either manager', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'manager-1',
+      name: 'Authenticated Manager',
+      email: 'manager-1@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-1',
+      userId: 'manager-1',
+      role: 'manager',
+    });
+    await insertUser({
+      id: 'manager-2',
+      name: 'Other Manager',
+      email: 'manager-2@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-manager-2',
+      userId: 'manager-2',
+      role: 'manager',
+    });
+
+    const result = await updateOwnStaffProfile(managerContext, {
+      name: 'Redirected Update',
+      managerId: 'manager-2',
+    } as unknown as Parameters<typeof updateOwnStaffProfile>[1]);
+
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'INVALID_STAFF_REQUEST',
+    });
+    await expect(getPersistedAuthUser('manager-1')).resolves.toEqual({
+      id: 'manager-1',
+      name: 'Authenticated Manager',
+      email: 'manager-1@example.com',
+    });
+    await expect(getPersistedAuthUser('manager-2')).resolves.toEqual({
+      id: 'manager-2',
+      name: 'Other Manager',
+      email: 'manager-2@example.com',
     });
   });
 });

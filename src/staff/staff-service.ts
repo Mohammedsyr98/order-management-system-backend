@@ -10,6 +10,7 @@ import type {
   ListManagersResponse,
   ManagerListItem,
   UpdateManagerProfileRequest,
+  UpdateStaffProfileRequest,
 } from '../contracts/staff.js';
 import type { StaffRole } from '../contracts/roles.js';
 import { db } from '../db/index.js';
@@ -18,6 +19,7 @@ import type {
   CreateStaffResult,
   DeleteManagerResult,
   UpdateManagerProfileResult,
+  UpdateStaffProfileResult,
 } from './staff-types.js';
 import {
   parseCreateStaffRequest,
@@ -229,6 +231,28 @@ export const updateManagerProfile = async (
     ok: true,
     data: {
       manager: updatedManager,
+    },
+  };
+};
+
+export const updateOwnStaffProfile = async (
+  authContext: ResolvedAuthContext,
+  request: UpdateStaffProfileRequest
+): Promise<UpdateStaffProfileResult> => {
+  const result = await updateManagerProfile(
+    authContext.tenantId,
+    authContext.userId,
+    request
+  );
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    data: {
+      staff: result.data.manager,
     },
   };
 };
