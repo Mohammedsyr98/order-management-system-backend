@@ -2,13 +2,23 @@ import type { StaffRole } from './roles.js';
 
 export type CreateStaffRole = StaffRole;
 
-export type CreateStaffRequest = {
+type CreateStaffBaseRequest = {
   name: string;
   email: string;
   password: string;
-  role: CreateStaffRole;
+};
+
+export type CreateManagerRequest = CreateStaffBaseRequest & {
+  role: 'manager';
   phone?: string | null;
 };
+
+export type CreateCourierRequest = CreateStaffBaseRequest & {
+  role: 'courier';
+  phone: string;
+};
+
+export type CreateStaffRequest = CreateManagerRequest | CreateCourierRequest;
 
 export type CreateStaffResponse = {
   user: {
