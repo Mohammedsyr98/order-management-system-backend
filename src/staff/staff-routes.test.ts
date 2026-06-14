@@ -156,6 +156,21 @@ const createdStaff = {
   },
 } as const;
 
+const courierRequest = {
+  ...staffRequest,
+  role: 'courier',
+  phone: '+15557654321',
+} as const;
+
+const createdCourier = {
+  ...createdStaff,
+  membership: {
+    ...createdStaff.membership,
+    role: 'courier',
+    phone: '+15557654321',
+  },
+} as const;
+
 const listedManagers: ListManagersResponse = {
   managers: [
     {
@@ -494,6 +509,32 @@ describe('staff routes', () => {
       requestBody
     );
   });
+
+  it.each(['owner', 'manager'] as const)(
+    'allows a %s to create a courier with a phone',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+      createStaffMock.mockResolvedValue({
+        ok: true,
+        data: createdCourier,
+      });
+
+      const response = await request(createApp())
+        .post('/api/staff')
+        .send(courierRequest);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(createdCourier);
+      expect(createStaffMock).toHaveBeenCalledWith(
+        routeAuth.context,
+        courierRequest
+      );
+    }
+  );
 
   it.each([
     ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],

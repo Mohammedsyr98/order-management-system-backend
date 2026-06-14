@@ -1,18 +1,27 @@
 import { z } from 'zod';
 
-import { STAFF_ROLES } from '../contracts/roles.js';
-
-export const createStaffSchema = z.object({
+const createStaffBaseSchema = {
   name: z.string(),
   email: z.string().trim().toLowerCase(),
   password: z.string(),
-  role: z.enum(STAFF_ROLES),
-  phone: z
-    .string()
-    .trim()
-    .nullish()
-    .transform((phone) => (phone && phone.length > 0 ? phone : null)),
-});
+};
+
+export const createStaffSchema = z.discriminatedUnion('role', [
+  z.object({
+    ...createStaffBaseSchema,
+    role: z.literal('manager'),
+    phone: z
+      .string()
+      .trim()
+      .nullish()
+      .transform((phone) => (phone && phone.length > 0 ? phone : null)),
+  }),
+  z.object({
+    ...createStaffBaseSchema,
+    role: z.literal('courier'),
+    phone: z.string().trim().min(1),
+  }),
+]);
 
 export type ValidCreateStaffRequest = z.infer<typeof createStaffSchema>;
 

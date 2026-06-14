@@ -173,7 +173,7 @@ describe('createStaff', () => {
     });
   });
 
-  it('stores null phone when staff phone is omitted', async () => {
+  it('stores null phone when manager phone is omitted', async () => {
     await insertTenant();
 
     const result = await createStaff(ownerContext, staffRequest);
@@ -201,7 +201,7 @@ describe('createStaff', () => {
     });
   });
 
-  it('stores null phone when staff phone is blank', async () => {
+  it('stores null phone when manager phone is blank', async () => {
     await insertTenant();
 
     const result = await createStaff(ownerContext, {
@@ -238,6 +238,7 @@ describe('createStaff', () => {
     const result = await createStaff(ownerContext, {
       ...staffRequest,
       role: 'courier',
+      phone: ' +15557654321 ',
     });
 
     expect(result).toEqual({
@@ -251,7 +252,7 @@ describe('createStaff', () => {
         membership: {
           tenantId: 'tenant-1',
           role: 'courier',
-          phone: null,
+          phone: '+15557654321',
         },
       },
     });
@@ -259,8 +260,37 @@ describe('createStaff', () => {
       tenantId: 'tenant-1',
       userId: 'staff-1',
       role: 'courier',
-      phone: null,
+      phone: '+15557654321',
     });
+  });
+
+  it('rejects courier creation without a non-empty phone', async () => {
+    await insertTenant();
+    const invalidPhoneInputs = [
+      ['omitted', {}],
+      ['null', { phone: null }],
+      ['empty', { phone: '' }],
+      ['whitespace-only', { phone: '   ' }],
+    ] as const;
+
+    for (const [label, phoneInput] of invalidPhoneInputs) {
+      const invalidRequest = {
+        ...staffRequest,
+        role: 'courier',
+        ...phoneInput,
+      } as unknown as CreateStaffRequest;
+
+      const result = await createStaff(ownerContext, invalidRequest);
+
+      expect(result, `courier phone is ${label}`).toEqual({
+        ok: false,
+        errorCode: 'INVALID_STAFF_REQUEST',
+      });
+    }
+
+    expect(signUpEmail).not.toHaveBeenCalled();
+    await expect(getPersistedAuthUser()).resolves.toBeNull();
+    await expect(getPersistedMembership()).resolves.toBeNull();
   });
 
   it('allows a manager to create a courier in their tenant', async () => {
@@ -269,6 +299,7 @@ describe('createStaff', () => {
     const result = await createStaff(managerContext, {
       ...staffRequest,
       role: 'courier',
+      phone: ' +15557654321 ',
     });
 
     expect(result).toEqual({
@@ -282,7 +313,7 @@ describe('createStaff', () => {
         membership: {
           tenantId: 'tenant-1',
           role: 'courier',
-          phone: null,
+          phone: '+15557654321',
         },
       },
     });
@@ -290,7 +321,7 @@ describe('createStaff', () => {
       tenantId: 'tenant-1',
       userId: 'staff-1',
       role: 'courier',
-      phone: null,
+      phone: '+15557654321',
     });
   });
 
@@ -316,6 +347,7 @@ describe('createStaff', () => {
       const result = await createStaff(courierContext, {
         ...staffRequest,
         role,
+        phone: '+15557654321',
       });
 
       expect(result).toEqual({
