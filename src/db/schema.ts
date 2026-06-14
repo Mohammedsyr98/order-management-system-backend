@@ -1,0 +1,124 @@
+import {
+  boolean,
+  index,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+import type { OperatingHours } from '../contracts/tenant.js';
+
+export const user = pgTable('auth_users', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const session = pgTable(
+  'auth_sessions',
+  {
+    id: text('id').primaryKey(),
+    expiresAt: timestamp('expires_at').notNull(),
+    token: text('token').notNull().unique(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [index('auth_sessions_user_id_idx').on(table.userId)]
+);
+
+export const account = pgTable(
+  'auth_accounts',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at'),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+    scope: text('scope'),
+    password: text('password'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('auth_accounts_user_id_idx').on(table.userId)]
+);
+
+export const verification = pgTable(
+  'auth_verifications',
+  {
+    id: text('id').primaryKey(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]
+);
+
+export const tenantRole = pgEnum('tenant_role', [
+  'owner',
+  'manager',
+  'courier',
+]);
+
+export const tenants = pgTable('tenants', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  phone: text('phone').notNull(),
+  timezone: text('timezone').notNull().default('Europe/Istanbul'),
+  operatingHours: jsonb('operating_hours')
+    .$type<OperatingHours>()
+    .notNull()
+    .default(
+      sql`'{"monday":{"status":"open","open":"09:00","close":"17:00"},"tuesday":{"status":"open","open":"09:00","close":"17:00"},"wednesday":{"status":"open","open":"09:00","close":"17:00"},"thursday":{"status":"open","open":"09:00","close":"17:00"},"friday":{"status":"open","open":"09:00","close":"17:00"},"saturday":{"status":"open","open":"09:00","close":"17:00"},"sunday":{"status":"closed"}}'::jsonb`
+    ),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const tenantUsers = pgTable(
+  'tenant_users',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: tenantRole('role').notNull(),
+    phone: text('phone'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('tenant_users_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('tenant_users_user_id_unique_idx').on(table.userId),
+  ]
+);
+
+export const authSchema = {
+  user,
+  session,
+  account,
+  verification,
+};
