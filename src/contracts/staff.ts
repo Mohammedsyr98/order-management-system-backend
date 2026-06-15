@@ -50,6 +50,14 @@ export type ListManagersResponse = {
   managers: ManagerListItem[];
 };
 
+export type CourierListItem = StaffProfile & {
+  role: 'courier';
+};
+
+export type ListCouriersResponse = {
+  couriers: CourierListItem[];
+};
+
 export type UpdateStaffProfileRequest = {
   name?: string;
   phone?: string | null;
