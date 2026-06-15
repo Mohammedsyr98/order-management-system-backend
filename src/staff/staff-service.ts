@@ -6,7 +6,9 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { auth } from '../auth/auth.js';
 import type { ResolvedAuthContext } from '../auth/auth-context.js';
 import type {
+  CourierListItem,
   CreateStaffRequest,
+  ListCouriersResponse,
   ListManagersResponse,
   ManagerListItem,
   UpdateManagerProfileRequest,
@@ -37,7 +39,7 @@ const canCreateStaffRole = (
   creatorRole === 'owner' ||
   (creatorRole === 'manager' && staffRole === 'courier');
 
-const managerProfileSelect = {
+const staffProfileSelect = {
   id: user.id,
   name: user.name,
   email: user.email,
@@ -50,7 +52,7 @@ const findManagerProfile = async (
   managerId: string
 ): Promise<ManagerListItem | null> => {
   const [manager] = await db
-    .select(managerProfileSelect)
+    .select(staffProfileSelect)
     .from(tenantUsers)
     .innerJoin(user, eq(user.id, tenantUsers.userId))
     .where(
@@ -71,6 +73,31 @@ const findManagerProfile = async (
     role: 'manager',
   };
 };
+
+async function listStaffByRole(
+  tenantId: string,
+  role: 'manager'
+): Promise<ManagerListItem[]>;
+async function listStaffByRole(
+  tenantId: string,
+  role: 'courier'
+): Promise<CourierListItem[]>;
+async function listStaffByRole(
+  tenantId: string,
+  role: 'manager' | 'courier'
+): Promise<Array<ManagerListItem | CourierListItem>> {
+  const staff = await db
+    .select(staffProfileSelect)
+    .from(tenantUsers)
+    .innerJoin(user, eq(user.id, tenantUsers.userId))
+    .where(and(eq(tenantUsers.tenantId, tenantId), eq(tenantUsers.role, role)))
+    .orderBy(asc(user.name), asc(user.email));
+
+  return staff.map((staffMember) => ({
+    ...staffMember,
+    role,
+  }));
+}
 
 export const createStaff = async (
   authContext: ResolvedAuthContext,
@@ -154,20 +181,16 @@ export const createStaff = async (
 export const listManagers = async (
   tenantId: string
 ): Promise<ListManagersResponse> => {
-  const managers = await db
-    .select(managerProfileSelect)
-    .from(tenantUsers)
-    .innerJoin(user, eq(user.id, tenantUsers.userId))
-    .where(
-      and(eq(tenantUsers.tenantId, tenantId), eq(tenantUsers.role, 'manager'))
-    )
-    .orderBy(asc(user.name), asc(user.email));
-
   return {
-    managers: managers.map((manager) => ({
-      ...manager,
-      role: 'manager',
-    })),
+    managers: await listStaffByRole(tenantId, 'manager'),
+  };
+};
+
+export const listCouriers = async (
+  tenantId: string
+): Promise<ListCouriersResponse> => {
+  return {
+    couriers: await listStaffByRole(tenantId, 'courier'),
   };
 };
 

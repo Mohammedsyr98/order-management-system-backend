@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import {
   requireAuthContext,
+  requireManagerAccess,
   requireOwnerAccess,
   requireTenantRole,
   type ResolvedAuthContext,
@@ -15,6 +16,7 @@ import { sendApiError } from '../http/api-errors.js';
 import {
   createStaff,
   deleteManager,
+  listCouriers,
   listManagers,
   updateManagerProfile,
   updateOwnStaffProfile,
@@ -61,6 +63,18 @@ staffRouter.patch(
     }
 
     res.json(result.data);
+  }
+);
+
+staffRouter.get(
+  '/couriers',
+  requireAuthContext,
+  requireManagerAccess,
+  async (_req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const couriers = await listCouriers(context.tenantId);
+
+    res.json(couriers);
   }
 );
 

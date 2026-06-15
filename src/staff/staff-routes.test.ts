@@ -4,6 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
+  ListCouriersResponse,
   ListManagersResponse,
   UpdateManagerProfileResponse,
 } from '../contracts/staff.js';
@@ -75,6 +76,31 @@ vi.mock('../auth/auth-context.js', () => ({
 
     next();
   }),
+  requireManagerAccess: vi.fn((_req, res, next) => {
+    const context = res.locals.authContext as RouteAuthContext | undefined;
+
+    if (!context) {
+      res.status(401).json({
+        error: {
+          code: 'UNAUTHENTICATED',
+          message: 'You must sign in to perform this action.',
+        },
+      });
+      return;
+    }
+
+    if (!['owner', 'manager'].includes(context.role)) {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.',
+        },
+      });
+      return;
+    }
+
+    next();
+  }),
   requireTenantRole: vi.fn(
     (allowedRoles: RouteAuthContext['role'][]) =>
       (_req: Request, res: Response, next: NextFunction) => {
@@ -108,6 +134,7 @@ vi.mock('../auth/auth-context.js', () => ({
 vi.mock('./staff-service.js', () => ({
   createStaff: vi.fn(),
   deleteManager: vi.fn(),
+  listCouriers: vi.fn(),
   listManagers: vi.fn(),
   updateManagerProfile: vi.fn(),
   updateOwnStaffProfile: vi.fn(),
@@ -116,6 +143,7 @@ vi.mock('./staff-service.js', () => ({
 const {
   createStaff,
   deleteManager,
+  listCouriers,
   listManagers,
   updateManagerProfile,
   updateOwnStaffProfile,
@@ -124,6 +152,7 @@ const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
 const deleteManagerMock = vi.mocked(deleteManager);
+const listCouriersMock = vi.mocked(listCouriers);
 const listManagersMock = vi.mocked(listManagers);
 const updateManagerProfileMock = vi.mocked(updateManagerProfile);
 const updateOwnStaffProfileMock = vi.mocked(updateOwnStaffProfile);
@@ -184,6 +213,19 @@ const listedManagers: ListManagersResponse = {
   ],
 };
 
+const listedCouriers: ListCouriersResponse = {
+  couriers: [
+    {
+      id: 'courier-1',
+      name: 'Courier User',
+      email: 'courier@example.com',
+      tenantId: 'tenant-1',
+      role: 'courier',
+      phone: '+15557654321',
+    },
+  ],
+};
+
 const updatedManager: UpdateManagerProfileResponse = {
   manager: {
     id: 'manager-1',
@@ -212,6 +254,7 @@ describe('staff routes', () => {
       data: createdStaff,
     });
     deleteManagerMock.mockResolvedValue({ ok: true });
+    listCouriersMock.mockResolvedValue(listedCouriers);
     listManagersMock.mockResolvedValue(listedManagers);
     updateManagerProfileMock.mockResolvedValue({
       ok: true,
@@ -229,6 +272,72 @@ describe('staff routes', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual(listedManagers);
     expect(listManagersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('lists couriers for an owner tenant', async () => {
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(listedCouriers);
+    expect(listCouriersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('lists couriers for a manager tenant', async () => {
+    routeAuth.context = {
+      userId: 'manager-1',
+      tenantId: 'tenant-1',
+      role: 'manager',
+    };
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(listedCouriers);
+    expect(listCouriersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('rejects courier listing for courier users', async () => {
+    routeAuth.context = {
+      userId: 'courier-1',
+      tenantId: 'tenant-1',
+      role: 'courier',
+    };
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'FORBIDDEN',
+      message: 'You do not have permission to perform this action.',
+    });
+    expect(listCouriersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated courier listing requests', async () => {
+    routeAuth.context = null;
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toEqual({
+      code: 'UNAUTHENTICATED',
+      message: 'You must sign in to perform this action.',
+    });
+    expect(listCouriersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects courier listing for authenticated users without tenant membership', async () => {
+    routeAuth.context = 'missing-membership';
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'TENANT_MEMBERSHIP_REQUIRED',
+      message:
+        'Your account is not linked to a tenant. Contact support for help.',
+    });
+    expect(listCouriersMock).not.toHaveBeenCalled();
   });
 
   it('rejects unauthenticated manager listing requests', async () => {
