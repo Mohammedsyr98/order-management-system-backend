@@ -356,3 +356,49 @@ describe('staff courier profile update routes', () => {
     }
   );
 });
+
+describe('staff courier self-profile update routes', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    routeAuth.context = {
+      userId: 'courier-1',
+      tenantId: 'tenant-1',
+      role: 'courier',
+    };
+    await resetTenantTestData();
+    await seedCourierListingData();
+  }, 30_000);
+
+  it('allows a courier to update their own name and phone', async () => {
+    const response = await request(createApp()).patch('/api/staff/me').send({
+      name: ' Updated Courier ',
+      phone: ' +15551112222 ',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      staff: {
+        id: 'courier-1',
+        name: 'Updated Courier',
+        email: 'alpha@example.com',
+        tenantId: 'tenant-1',
+        role: 'courier',
+        phone: '+15551112222',
+      },
+    });
+  });
+
+  it('rejects attempts to clear the courier phone', async () => {
+    for (const phone of [null, '', '   ']) {
+      const response = await request(createApp())
+        .patch('/api/staff/me')
+        .send({ phone });
+
+      expect(response.status, `phone ${JSON.stringify(phone)}`).toBe(400);
+      expect(response.body.error).toEqual({
+        code: 'INVALID_STAFF_REQUEST',
+        message: 'Staff request is invalid.',
+      });
+    }
+  });
+});

@@ -570,7 +570,7 @@ describe('staff manager routes', () => {
       }
     );
 
-    it.each(['owner', 'courier'] as const)(
+    it.each(['owner'] as const)(
       'rejects self-profile updates from %s users',
       async (role) => {
         await seedManagerProfileData();
