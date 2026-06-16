@@ -28,6 +28,23 @@ export type ValidCreateStaffRequest = z.infer<typeof createStaffSchema>;
 export const parseCreateStaffRequest = (value: unknown) =>
   createStaffSchema.safeParse(value);
 
+export const updateCourierProfileSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(1).optional(),
+  })
+  .refine(
+    (profile) => Object.values(profile).some((value) => value !== undefined),
+    'At least one courier profile field is required.'
+  );
+
+export type ValidUpdateCourierProfileRequest = z.infer<
+  typeof updateCourierProfileSchema
+>;
+
+export const parseUpdateCourierProfileRequest = (value: unknown) =>
+  updateCourierProfileSchema.safeParse(value);
+
 export const updateManagerProfileSchema = z
   .strictObject({
     name: z.string().trim().min(1).optional(),

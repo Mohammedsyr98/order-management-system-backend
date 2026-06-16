@@ -34,6 +34,7 @@ const {
   deleteManager,
   listCouriers,
   listManagers,
+  updateCourierProfile,
   updateManagerProfile,
   updateOwnStaffProfile,
 } = await import('./staff-service.js');
@@ -618,6 +619,165 @@ describe('listCouriers', () => {
       ],
     });
   });
+});
+
+describe('updateCourierProfile', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await resetTenantTestData();
+  });
+
+  it('updates a courier name and phone in the authenticated tenant', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'courier-1',
+      name: 'Original Courier',
+      email: 'courier@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-courier-1',
+      userId: 'courier-1',
+      role: 'courier',
+      phone: '+15550000000',
+    });
+
+    const result = await updateCourierProfile('tenant-1', 'courier-1', {
+      name: ' Updated Courier ',
+      phone: ' +15557654321 ',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        courier: {
+          id: 'courier-1',
+          name: 'Updated Courier',
+          email: 'courier@example.com',
+          tenantId: 'tenant-1',
+          role: 'courier',
+          phone: '+15557654321',
+        },
+      },
+    });
+    await expect(getPersistedAuthUser('courier-1')).resolves.toEqual({
+      id: 'courier-1',
+      name: 'Updated Courier',
+      email: 'courier@example.com',
+    });
+    await expect(getPersistedMembership('courier-1')).resolves.toEqual({
+      tenantId: 'tenant-1',
+      userId: 'courier-1',
+      role: 'courier',
+      phone: '+15557654321',
+    });
+  });
+
+  it('leaves an omitted courier name unchanged when replacing the phone', async () => {
+    await insertTenant();
+    await insertUser({
+      id: 'courier-1',
+      name: 'Original Courier',
+      email: 'courier@example.com',
+    });
+    await insertTenantMembership({
+      id: 'tenant-user-courier-1',
+      userId: 'courier-1',
+      role: 'courier',
+      phone: '+15550000000',
+    });
+
+    const result = await updateCourierProfile('tenant-1', 'courier-1', {
+      phone: ' +15557654321 ',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        courier: {
+          id: 'courier-1',
+          name: 'Original Courier',
+          email: 'courier@example.com',
+          tenantId: 'tenant-1',
+          role: 'courier',
+          phone: '+15557654321',
+        },
+      },
+    });
+  });
+
+  it('rejects invalid courier profile updates', async () => {
+    await insertTenant();
+    const invalidUpdates = [
+      ['empty body', {}],
+      ['null phone', { phone: null }],
+      ['empty phone', { phone: '' }],
+      ['whitespace-only phone', { phone: '   ' }],
+      ['blank name', { name: '   ' }],
+      ['email', { email: 'new@example.com' }],
+      ['password', { password: 'new-password' }],
+      ['role', { role: 'manager' }],
+      ['tenantId', { tenantId: 'tenant-2' }],
+      ['userId', { userId: 'courier-2' }],
+      ['courierId', { courierId: 'courier-2' }],
+    ] as const;
+
+    for (const [label, update] of invalidUpdates) {
+      const result = await updateCourierProfile(
+        'tenant-1',
+        'courier-1',
+        update as unknown as Parameters<typeof updateCourierProfile>[2]
+      );
+
+      expect(result, label).toEqual({
+        ok: false,
+        errorCode: 'INVALID_STAFF_REQUEST',
+      });
+    }
+  });
+
+  it.each([
+    ['manager', 'manager-1', 'manager', 'tenant-1'],
+    ['owner', 'owner-2', 'owner', 'tenant-1'],
+    ['other tenant courier', 'courier-2', 'courier', 'tenant-2'],
+  ] as const)(
+    'rejects updates for a %s target',
+    async (_label, userId, role, tenantId) => {
+      await insertTenant();
+      await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
+      await insertUser({
+        id: userId,
+        name: 'Target User',
+        email: `${userId}@example.com`,
+      });
+      await insertTenantMembership({
+        id: `tenant-user-${userId}`,
+        tenantId,
+        userId,
+        role,
+        phone: '+15550000000',
+      });
+
+      const result = await updateCourierProfile('tenant-1', userId, {
+        name: 'Blocked Update',
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        errorCode: 'STAFF_COURIER_NOT_FOUND',
+      });
+      await expect(getPersistedAuthUser(userId)).resolves.toEqual({
+        id: userId,
+        name: 'Target User',
+        email: `${userId}@example.com`,
+      });
+      await expect(getPersistedMembership(userId)).resolves.toEqual({
+        tenantId,
+        userId,
+        role,
+        phone: '+15550000000',
+      });
+    }
+  );
 });
 
 describe('updateManagerProfile', () => {
