@@ -9,6 +9,7 @@ import {
 } from '../auth/auth-context.js';
 import type {
   CreateStaffRequest,
+  UpdateCourierProfileRequest,
   UpdateManagerProfileRequest,
   UpdateStaffProfileRequest,
 } from '../contracts/staff.js';
@@ -18,11 +19,13 @@ import {
   deleteManager,
   listCouriers,
   listManagers,
+  updateCourierProfile,
   updateManagerProfile,
   updateOwnStaffProfile,
 } from './staff-service.js';
 import type {
   DeleteManagerErrorCode,
+  UpdateCourierProfileErrorCode,
   UpdateManagerProfileErrorCode,
 } from './staff-types.js';
 
@@ -36,6 +39,15 @@ const updateManagerProfileStatus = (
   errorCode === 'INVALID_STAFF_REQUEST'
     ? 400
     : errorCode === 'STAFF_MANAGER_NOT_FOUND'
+      ? 404
+      : 422;
+
+const updateCourierProfileStatus = (
+  errorCode: UpdateCourierProfileErrorCode
+) =>
+  errorCode === 'INVALID_STAFF_REQUEST'
+    ? 400
+    : errorCode === 'STAFF_COURIER_NOT_FOUND'
       ? 404
       : 422;
 
@@ -75,6 +87,39 @@ staffRouter.get(
     const couriers = await listCouriers(context.tenantId);
 
     res.json(couriers);
+  }
+);
+
+staffRouter.patch(
+  '/couriers/:courierId',
+  requireAuthContext,
+  requireManagerAccess,
+  async (req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const body = req.body as UpdateCourierProfileRequest;
+    const { courierId } = req.params;
+
+    if (typeof courierId !== 'string') {
+      sendApiError(res, 400, 'INVALID_STAFF_REQUEST');
+      return;
+    }
+
+    const result = await updateCourierProfile(
+      context.tenantId,
+      courierId,
+      body
+    );
+
+    if (!result.ok) {
+      sendApiError(
+        res,
+        updateCourierProfileStatus(result.errorCode),
+        result.errorCode
+      );
+      return;
+    }
+
+    res.json(result.data);
   }
 );
 

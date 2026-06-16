@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ListCouriersResponse,
   ListManagersResponse,
+  UpdateCourierProfileResponse,
   UpdateManagerProfileResponse,
 } from '../contracts/staff.js';
 
@@ -136,6 +137,7 @@ vi.mock('./staff-service.js', () => ({
   deleteManager: vi.fn(),
   listCouriers: vi.fn(),
   listManagers: vi.fn(),
+  updateCourierProfile: vi.fn(),
   updateManagerProfile: vi.fn(),
   updateOwnStaffProfile: vi.fn(),
 }));
@@ -145,6 +147,7 @@ const {
   deleteManager,
   listCouriers,
   listManagers,
+  updateCourierProfile,
   updateManagerProfile,
   updateOwnStaffProfile,
 } = await import('./staff-service.js');
@@ -154,6 +157,7 @@ const createStaffMock = vi.mocked(createStaff);
 const deleteManagerMock = vi.mocked(deleteManager);
 const listCouriersMock = vi.mocked(listCouriers);
 const listManagersMock = vi.mocked(listManagers);
+const updateCourierProfileMock = vi.mocked(updateCourierProfile);
 const updateManagerProfileMock = vi.mocked(updateManagerProfile);
 const updateOwnStaffProfileMock = vi.mocked(updateOwnStaffProfile);
 
@@ -237,6 +241,17 @@ const updatedManager: UpdateManagerProfileResponse = {
   },
 };
 
+const updatedCourier: UpdateCourierProfileResponse = {
+  courier: {
+    id: 'courier-1',
+    name: 'Updated Courier',
+    email: 'courier@example.com',
+    tenantId: 'tenant-1',
+    role: 'courier',
+    phone: '+15557654321',
+  },
+};
+
 const updatedStaff = {
   staff: updatedManager.manager,
 };
@@ -256,6 +271,10 @@ describe('staff routes', () => {
     deleteManagerMock.mockResolvedValue({ ok: true });
     listCouriersMock.mockResolvedValue(listedCouriers);
     listManagersMock.mockResolvedValue(listedManagers);
+    updateCourierProfileMock.mockResolvedValue({
+      ok: true,
+      data: updatedCourier,
+    });
     updateManagerProfileMock.mockResolvedValue({
       ok: true,
       data: updatedManager,
@@ -405,6 +424,51 @@ describe('staff routes', () => {
       requestBody
     );
   });
+
+  it('updates a courier profile through the service and returns the updated courier payload', async () => {
+    const requestBody = {
+      name: 'Updated Courier',
+      phone: '+15557654321',
+    };
+
+    const response = await request(createApp())
+      .patch('/api/staff/couriers/courier-1')
+      .send(requestBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(updatedCourier);
+    expect(updateCourierProfileMock).toHaveBeenCalledWith(
+      'tenant-1',
+      'courier-1',
+      requestBody
+    );
+  });
+
+  it.each([
+    ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
+    ['STAFF_COURIER_NOT_FOUND', 404, 'Courier could not be found.'],
+    ['STAFF_UPDATE_FAILED', 422, 'Staff account could not be updated.'],
+  ] as const)(
+    'maps %s courier update service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      updateCourierProfileMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp())
+        .patch('/api/staff/couriers/courier-1')
+        .send({
+          name: 'Updated Courier',
+        });
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
+    }
+  );
 
   it.each([
     ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],

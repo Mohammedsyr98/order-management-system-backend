@@ -11,6 +11,7 @@ import type {
   ListCouriersResponse,
   ListManagersResponse,
   ManagerListItem,
+  UpdateCourierProfileRequest,
   UpdateManagerProfileRequest,
   UpdateStaffProfileRequest,
 } from '../contracts/staff.js';
@@ -20,12 +21,16 @@ import { tenantUsers, user } from '../db/schema.js';
 import type {
   CreateStaffResult,
   DeleteManagerResult,
+  UpdateCourierProfileResult,
   UpdateManagerProfileResult,
   UpdateStaffProfileResult,
 } from './staff-types.js';
 import {
   parseCreateStaffRequest,
+  parseUpdateCourierProfileRequest,
   parseUpdateManagerProfileRequest,
+  type ValidUpdateCourierProfileRequest,
+  type ValidUpdateManagerProfileRequest,
 } from './staff-validation.js';
 
 const cleanupCreatedUser = async (userId: string) => {
@@ -47,30 +52,37 @@ const staffProfileSelect = {
   phone: tenantUsers.phone,
 };
 
-const findManagerProfile = async (
+type ManagedStaffRole = 'manager' | 'courier';
+type ManagedStaffProfile = ManagerListItem | CourierListItem;
+type ValidManagedStaffUpdate =
+  | ValidUpdateManagerProfileRequest
+  | ValidUpdateCourierProfileRequest;
+
+const findStaffProfile = async (
   tenantId: string,
-  managerId: string
-): Promise<ManagerListItem | null> => {
-  const [manager] = await db
+  staffId: string,
+  role: ManagedStaffRole
+): Promise<ManagedStaffProfile | null> => {
+  const [staff] = await db
     .select(staffProfileSelect)
     .from(tenantUsers)
     .innerJoin(user, eq(user.id, tenantUsers.userId))
     .where(
       and(
         eq(tenantUsers.tenantId, tenantId),
-        eq(tenantUsers.userId, managerId),
-        eq(tenantUsers.role, 'manager')
+        eq(tenantUsers.userId, staffId),
+        eq(tenantUsers.role, role)
       )
     )
     .limit(1);
 
-  if (!manager) {
+  if (!staff) {
     return null;
   }
 
   return {
-    ...manager,
-    role: 'manager',
+    ...staff,
+    role,
   };
 };
 
@@ -98,6 +110,62 @@ async function listStaffByRole(
     role,
   }));
 }
+
+const updateStaffProfileByRole = async (
+  tenantId: string,
+  staffId: string,
+  role: ManagedStaffRole,
+  update: ValidManagedStaffUpdate
+): Promise<
+  | { ok: true; profile: ManagedStaffProfile }
+  | { ok: false; reason: 'NOT_FOUND' | 'UPDATE_FAILED' }
+> => {
+  const staff = await findStaffProfile(tenantId, staffId, role);
+
+  if (!staff) {
+    return { ok: false, reason: 'NOT_FOUND' };
+  }
+
+  const updatedAt = new Date();
+
+  if (update.phone !== undefined) {
+    const [updatedMembership] = await db
+      .update(tenantUsers)
+      .set({ phone: update.phone, updatedAt })
+      .where(
+        and(
+          eq(tenantUsers.tenantId, tenantId),
+          eq(tenantUsers.userId, staffId),
+          eq(tenantUsers.role, role)
+        )
+      )
+      .returning({ userId: tenantUsers.userId });
+
+    if (!updatedMembership) {
+      return { ok: false, reason: 'UPDATE_FAILED' };
+    }
+  }
+
+  if (update.name !== undefined) {
+    const [updatedUser] = await db
+      .update(user)
+      .set({ name: update.name, updatedAt })
+      .where(eq(user.id, staffId))
+      .returning({ id: user.id });
+
+    if (!updatedUser) {
+      return { ok: false, reason: 'UPDATE_FAILED' };
+    }
+  }
+
+  const updatedStaff = await findStaffProfile(tenantId, staffId, role);
+
+  if (!updatedStaff) {
+    return { ok: false, reason: 'UPDATE_FAILED' };
+  }
+
+  return { ok: true, profile: updatedStaff };
+};
 
 export const createStaff = async (
   authContext: ResolvedAuthContext,
@@ -194,6 +262,42 @@ export const listCouriers = async (
   };
 };
 
+export const updateCourierProfile = async (
+  tenantId: string,
+  courierId: string,
+  request: UpdateCourierProfileRequest
+): Promise<UpdateCourierProfileResult> => {
+  const validation = parseUpdateCourierProfileRequest(request);
+
+  if (!validation.success) {
+    return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
+  }
+
+  const result = await updateStaffProfileByRole(
+    tenantId,
+    courierId,
+    'courier',
+    validation.data
+  );
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      errorCode:
+        result.reason === 'NOT_FOUND'
+          ? 'STAFF_COURIER_NOT_FOUND'
+          : 'STAFF_UPDATE_FAILED',
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      courier: result.profile as CourierListItem,
+    },
+  };
+};
+
 export const updateManagerProfile = async (
   tenantId: string,
   managerId: string,
@@ -205,55 +309,27 @@ export const updateManagerProfile = async (
     return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
   }
 
-  const manager = await findManagerProfile(tenantId, managerId);
+  const result = await updateStaffProfileByRole(
+    tenantId,
+    managerId,
+    'manager',
+    validation.data
+  );
 
-  if (!manager) {
-    return { ok: false, errorCode: 'STAFF_MANAGER_NOT_FOUND' };
-  }
-
-  const update = validation.data;
-  const updatedAt = new Date();
-
-  if (update.phone !== undefined) {
-    const [updatedMembership] = await db
-      .update(tenantUsers)
-      .set({ phone: update.phone, updatedAt })
-      .where(
-        and(
-          eq(tenantUsers.tenantId, tenantId),
-          eq(tenantUsers.userId, managerId),
-          eq(tenantUsers.role, 'manager')
-        )
-      )
-      .returning({ userId: tenantUsers.userId });
-
-    if (!updatedMembership) {
-      return { ok: false, errorCode: 'STAFF_UPDATE_FAILED' };
-    }
-  }
-
-  if (update.name !== undefined) {
-    const [updatedUser] = await db
-      .update(user)
-      .set({ name: update.name, updatedAt })
-      .where(eq(user.id, managerId))
-      .returning({ id: user.id });
-
-    if (!updatedUser) {
-      return { ok: false, errorCode: 'STAFF_UPDATE_FAILED' };
-    }
-  }
-
-  const updatedManager = await findManagerProfile(tenantId, managerId);
-
-  if (!updatedManager) {
-    return { ok: false, errorCode: 'STAFF_UPDATE_FAILED' };
+  if (!result.ok) {
+    return {
+      ok: false,
+      errorCode:
+        result.reason === 'NOT_FOUND'
+          ? 'STAFF_MANAGER_NOT_FOUND'
+          : 'STAFF_UPDATE_FAILED',
+    };
   }
 
   return {
     ok: true,
     data: {
-      manager: updatedManager,
+      manager: result.profile as ManagerListItem,
     },
   };
 };

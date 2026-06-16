@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type RouteAuthContext = {
   userId: string;
@@ -237,6 +237,121 @@ describe('staff courier listing routes', () => {
             phone: null,
           },
         ],
+      });
+    }
+  );
+});
+
+describe('staff courier profile update routes', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    routeAuth.context = {
+      userId: 'owner-1',
+      tenantId: 'tenant-1',
+      role: 'owner',
+    };
+    await resetTenantTestData();
+    await seedCourierListingData();
+  }, 30_000);
+
+  it.each(['owner', 'manager'] as const)(
+    'allows a %s to update a courier in their tenant',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+
+      const response = await request(createApp())
+        .patch('/api/staff/couriers/courier-1')
+        .send({
+          name: ' Updated Courier ',
+          phone: ' +15551112222 ',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        courier: {
+          id: 'courier-1',
+          name: 'Updated Courier',
+          email: 'alpha@example.com',
+          tenantId: 'tenant-1',
+          role: 'courier',
+          phone: '+15551112222',
+        },
+      });
+    }
+  );
+
+  it('rejects attempts to clear a courier phone', async () => {
+    for (const phone of [null, '', '   ']) {
+      const response = await request(createApp())
+        .patch('/api/staff/couriers/courier-1')
+        .send({ phone });
+
+      expect(response.status, `phone ${JSON.stringify(phone)}`).toBe(400);
+      expect(response.body.error).toEqual({
+        code: 'INVALID_STAFF_REQUEST',
+        message: 'Staff request is invalid.',
+      });
+    }
+  });
+
+  it.each([
+    [
+      'courier',
+      {
+        userId: 'courier-1',
+        tenantId: 'tenant-1',
+        role: 'courier',
+      },
+      403,
+      'FORBIDDEN',
+      'You do not have permission to perform this action.',
+    ],
+    [
+      'unauthenticated user',
+      null,
+      401,
+      'UNAUTHENTICATED',
+      'You must sign in to perform this action.',
+    ],
+    [
+      'user without tenant membership',
+      'missing-membership',
+      403,
+      'TENANT_MEMBERSHIP_REQUIRED',
+      'Your account is not linked to a tenant. Contact support for help.',
+    ],
+  ] as const)(
+    'rejects courier profile updates from a %s',
+    async (_label, context, status, code, message) => {
+      routeAuth.context = context;
+
+      const response = await request(createApp())
+        .patch('/api/staff/couriers/courier-1')
+        .send({ name: 'Blocked Update' });
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({ code, message });
+    }
+  );
+
+  it.each([
+    ['manager', 'manager-1'],
+    ['courier from another tenant', 'other-tenant-courier-1'],
+  ] as const)(
+    'returns courier not found when updating a %s',
+    async (_label, courierId) => {
+      const response = await request(createApp())
+        .patch(`/api/staff/couriers/${courierId}`)
+        .send({ name: 'Blocked Update' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toEqual({
+        code: 'STAFF_COURIER_NOT_FOUND',
+        message: 'Courier could not be found.',
       });
     }
   );

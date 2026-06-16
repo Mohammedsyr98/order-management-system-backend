@@ -58,6 +58,15 @@ export type ListCouriersResponse = {
   couriers: CourierListItem[];
 };
 
+export type UpdateCourierProfileRequest = {
+  name?: string;
+  phone?: string;
+};
+
+export type UpdateCourierProfileResponse = {
+  courier: CourierListItem;
+};
+
 export type UpdateStaffProfileRequest = {
   name?: string;
   phone?: string | null;
