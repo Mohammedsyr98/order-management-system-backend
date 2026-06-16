@@ -27,11 +27,12 @@ import type {
   DeleteManagerErrorCode,
   UpdateCourierProfileErrorCode,
   UpdateManagerProfileErrorCode,
+  UpdateStaffProfileErrorCode,
 } from './staff-types.js';
 
 export const staffRouter = Router();
 
-const requireManagerSelfAccess = requireTenantRole(['manager']);
+const requireStaffSelfAccess = requireTenantRole(['manager', 'courier']);
 
 const updateManagerProfileStatus = (
   errorCode: UpdateManagerProfileErrorCode
@@ -51,13 +52,21 @@ const updateCourierProfileStatus = (
       ? 404
       : 422;
 
+const staffProfileErrorStatus = (errorCode: UpdateStaffProfileErrorCode) =>
+  errorCode === 'INVALID_STAFF_REQUEST'
+    ? 400
+    : errorCode === 'STAFF_MANAGER_NOT_FOUND' ||
+        errorCode === 'STAFF_COURIER_NOT_FOUND'
+      ? 404
+      : 422;
+
 const deleteManagerStatus = (errorCode: DeleteManagerErrorCode) =>
   errorCode === 'STAFF_MANAGER_NOT_FOUND' ? 404 : 422;
 
 staffRouter.patch(
   '/me',
   requireAuthContext,
-  requireManagerSelfAccess,
+  requireStaffSelfAccess,
   async (req, res) => {
     const context = res.locals.authContext as ResolvedAuthContext;
     const result = await updateOwnStaffProfile(
@@ -68,7 +77,7 @@ staffRouter.patch(
     if (!result.ok) {
       sendApiError(
         res,
-        updateManagerProfileStatus(result.errorCode),
+        staffProfileErrorStatus(result.errorCode),
         result.errorCode
       );
       return;

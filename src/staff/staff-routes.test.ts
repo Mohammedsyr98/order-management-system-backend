@@ -8,6 +8,7 @@ import type {
   ListManagersResponse,
   UpdateCourierProfileResponse,
   UpdateManagerProfileResponse,
+  UpdateStaffProfileResponse,
 } from '../contracts/staff.js';
 
 type RouteAuthContext = {
@@ -254,6 +255,10 @@ const updatedCourier: UpdateCourierProfileResponse = {
 
 const updatedStaff = {
   staff: updatedManager.manager,
+};
+
+const updatedCourierStaff: UpdateStaffProfileResponse = {
+  staff: updatedCourier.courier,
 };
 
 describe('staff routes', () => {
@@ -519,7 +524,34 @@ describe('staff routes', () => {
     );
   });
 
-  it.each(['owner', 'courier'] as const)(
+  it('updates the authenticated courier through the self-profile service', async () => {
+    routeAuth.context = {
+      userId: 'courier-1',
+      tenantId: 'tenant-1',
+      role: 'courier',
+    };
+    updateOwnStaffProfileMock.mockResolvedValue({
+      ok: true,
+      data: updatedCourierStaff,
+    });
+    const requestBody = {
+      name: 'Updated Courier',
+      phone: '+15557654321',
+    };
+
+    const response = await request(createApp())
+      .patch('/api/staff/me')
+      .send(requestBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(updatedCourierStaff);
+    expect(updateOwnStaffProfileMock).toHaveBeenCalledWith(
+      routeAuth.context,
+      requestBody
+    );
+  });
+
+  it.each(['owner'] as const)(
     'rejects self-profile updates from %s users',
     async (role) => {
       routeAuth.context = {
@@ -575,6 +607,7 @@ describe('staff routes', () => {
   it.each([
     ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
     ['STAFF_MANAGER_NOT_FOUND', 404, 'Manager could not be found.'],
+    ['STAFF_COURIER_NOT_FOUND', 404, 'Courier could not be found.'],
     ['STAFF_UPDATE_FAILED', 422, 'Staff account could not be updated.'],
   ] as const)(
     'maps %s self-profile service failures to HTTP %i responses',

@@ -36,9 +36,13 @@ export type UpdateCourierProfileResult =
   | { ok: true; data: UpdateCourierProfileResponse }
   | { ok: false; errorCode: UpdateCourierProfileErrorCode };
 
+export type UpdateStaffProfileErrorCode =
+  | UpdateManagerProfileErrorCode
+  | UpdateCourierProfileErrorCode;
+
 export type UpdateStaffProfileResult =
   | { ok: true; data: UpdateStaffProfileResponse }
-  | { ok: false; errorCode: UpdateManagerProfileErrorCode };
+  | { ok: false; errorCode: UpdateStaffProfileErrorCode };
 
 export type DeleteManagerErrorCode = Extract<
   ApiErrorCode,

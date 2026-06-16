@@ -338,20 +338,40 @@ export const updateOwnStaffProfile = async (
   authContext: ResolvedAuthContext,
   request: UpdateStaffProfileRequest
 ): Promise<UpdateStaffProfileResult> => {
-  const result = await updateManagerProfile(
+  const role: ManagedStaffRole =
+    authContext.role === 'courier' ? 'courier' : 'manager';
+  const validation =
+    role === 'courier'
+      ? parseUpdateCourierProfileRequest(request)
+      : parseUpdateManagerProfileRequest(request);
+
+  if (!validation.success) {
+    return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
+  }
+
+  const result = await updateStaffProfileByRole(
     authContext.tenantId,
     authContext.userId,
-    request
+    role,
+    validation.data
   );
 
   if (!result.ok) {
-    return result;
+    return {
+      ok: false,
+      errorCode:
+        result.reason === 'NOT_FOUND'
+          ? role === 'courier'
+            ? 'STAFF_COURIER_NOT_FOUND'
+            : 'STAFF_MANAGER_NOT_FOUND'
+          : 'STAFF_UPDATE_FAILED',
+    };
   }
 
   return {
     ok: true,
     data: {
-      staff: result.data.manager,
+      staff: result.profile,
     },
   };
 };
