@@ -20,6 +20,7 @@ import { db } from '../db/index.js';
 import { tenantUsers, user } from '../db/schema.js';
 import type {
   CreateStaffResult,
+  DeleteCourierResult,
   DeleteManagerResult,
   UpdateCourierProfileResult,
   UpdateManagerProfileResult,
@@ -395,6 +396,33 @@ export const deleteManager = async (
 
     if (!deletedManager) {
       return { ok: false, errorCode: 'STAFF_MANAGER_NOT_FOUND' };
+    }
+
+    return { ok: true };
+  } catch {
+    return { ok: false, errorCode: 'STAFF_DELETE_FAILED' };
+  }
+};
+
+export const deleteCourier = async (
+  tenantId: string,
+  courierId: string
+): Promise<DeleteCourierResult> => {
+  try {
+    const courierIds = db
+      .select({ userId: tenantUsers.userId })
+      .from(tenantUsers)
+      .where(
+        and(eq(tenantUsers.tenantId, tenantId), eq(tenantUsers.role, 'courier'))
+      );
+
+    const [deletedCourier] = await db
+      .delete(user)
+      .where(and(eq(user.id, courierId), inArray(user.id, courierIds)))
+      .returning({ id: user.id });
+
+    if (!deletedCourier) {
+      return { ok: false, errorCode: 'STAFF_COURIER_NOT_FOUND' };
     }
 
     return { ok: true };

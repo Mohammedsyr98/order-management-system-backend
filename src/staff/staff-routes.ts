@@ -16,6 +16,7 @@ import type {
 import { sendApiError } from '../http/api-errors.js';
 import {
   createStaff,
+  deleteCourier,
   deleteManager,
   listCouriers,
   listManagers,
@@ -24,6 +25,7 @@ import {
   updateOwnStaffProfile,
 } from './staff-service.js';
 import type {
+  DeleteCourierErrorCode,
   DeleteManagerErrorCode,
   UpdateCourierProfileErrorCode,
   UpdateManagerProfileErrorCode,
@@ -62,6 +64,9 @@ const staffProfileErrorStatus = (errorCode: UpdateStaffProfileErrorCode) =>
 
 const deleteManagerStatus = (errorCode: DeleteManagerErrorCode) =>
   errorCode === 'STAFF_MANAGER_NOT_FOUND' ? 404 : 422;
+
+const deleteCourierStatus = (errorCode: DeleteCourierErrorCode) =>
+  errorCode === 'STAFF_COURIER_NOT_FOUND' ? 404 : 422;
 
 staffRouter.patch(
   '/me',
@@ -129,6 +134,34 @@ staffRouter.patch(
     }
 
     res.json(result.data);
+  }
+);
+
+staffRouter.delete(
+  '/couriers/:courierId',
+  requireAuthContext,
+  requireManagerAccess,
+  async (req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const { courierId } = req.params;
+
+    if (typeof courierId !== 'string') {
+      sendApiError(res, 400, 'INVALID_STAFF_REQUEST');
+      return;
+    }
+
+    const result = await deleteCourier(context.tenantId, courierId);
+
+    if (!result.ok) {
+      sendApiError(
+        res,
+        deleteCourierStatus(result.errorCode),
+        result.errorCode
+      );
+      return;
+    }
+
+    res.status(204).end();
   }
 );
 

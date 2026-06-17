@@ -135,6 +135,7 @@ vi.mock('../auth/auth-context.js', () => ({
 
 vi.mock('./staff-service.js', () => ({
   createStaff: vi.fn(),
+  deleteCourier: vi.fn(),
   deleteManager: vi.fn(),
   listCouriers: vi.fn(),
   listManagers: vi.fn(),
@@ -145,6 +146,7 @@ vi.mock('./staff-service.js', () => ({
 
 const {
   createStaff,
+  deleteCourier,
   deleteManager,
   listCouriers,
   listManagers,
@@ -155,6 +157,7 @@ const {
 const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
+const deleteCourierMock = vi.mocked(deleteCourier);
 const deleteManagerMock = vi.mocked(deleteManager);
 const listCouriersMock = vi.mocked(listCouriers);
 const listManagersMock = vi.mocked(listManagers);
@@ -273,6 +276,7 @@ describe('staff routes', () => {
       ok: true,
       data: createdStaff,
     });
+    deleteCourierMock.mockResolvedValue({ ok: true });
     deleteManagerMock.mockResolvedValue({ ok: true });
     listCouriersMock.mockResolvedValue(listedCouriers);
     listManagersMock.mockResolvedValue(listedManagers);
@@ -631,6 +635,89 @@ describe('staff routes', () => {
         code: errorCode,
         message,
       });
+    }
+  );
+
+  it.each(['owner', 'manager'] as const)(
+    'deletes a courier through the service for a %s tenant and returns no content',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.body).toEqual({});
+      expect(deleteCourierMock).toHaveBeenCalledWith('tenant-1', 'courier-1');
+    }
+  );
+
+  it.each([
+    ['STAFF_COURIER_NOT_FOUND', 404, 'Courier could not be found.'],
+    ['STAFF_DELETE_FAILED', 422, 'Staff account could not be deleted.'],
+  ] as const)(
+    'maps %s courier deletion service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      deleteCourierMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
+    }
+  );
+
+  it.each([
+    [
+      'courier users',
+      {
+        userId: 'courier-1',
+        tenantId: 'tenant-1',
+        role: 'courier',
+      },
+      403,
+      'FORBIDDEN',
+      'You do not have permission to perform this action.',
+    ],
+    [
+      'unauthenticated users',
+      null,
+      401,
+      'UNAUTHENTICATED',
+      'You must sign in to perform this action.',
+    ],
+    [
+      'authenticated users without tenant membership',
+      'missing-membership',
+      403,
+      'TENANT_MEMBERSHIP_REQUIRED',
+      'Your account is not linked to a tenant. Contact support for help.',
+    ],
+  ] as const)(
+    'rejects courier deletion for %s',
+    async (_label, context, status, code, message) => {
+      routeAuth.context = context;
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({ code, message });
+      expect(deleteCourierMock).not.toHaveBeenCalled();
     }
   );
 

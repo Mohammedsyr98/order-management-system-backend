@@ -52,3 +52,12 @@ export type DeleteManagerErrorCode = Extract<
 export type DeleteManagerResult =
   | { ok: true }
   | { ok: false; errorCode: DeleteManagerErrorCode };
+
+export type DeleteCourierErrorCode = Extract<
+  ApiErrorCode,
+  'STAFF_COURIER_NOT_FOUND' | 'STAFF_DELETE_FAILED'
+>;
+
+export type DeleteCourierResult =
+  | { ok: true }
+  | { ok: false; errorCode: DeleteCourierErrorCode };
