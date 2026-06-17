@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { eq } from 'drizzle-orm';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
@@ -140,6 +141,8 @@ const {
   insertUser,
   resetTenantTestData,
 } = await import('../test/test-db.js');
+const { db } = await import('../db/index.js');
+const { tenantUsers, user: authUsers } = await import('../db/schema.js');
 const { staffRouter } = await import('./staff-routes.js');
 
 const createApp = () => {
@@ -147,6 +150,35 @@ const createApp = () => {
   app.use(express.json());
   app.use('/api/staff', staffRouter);
   return app;
+};
+
+const getPersistedAuthUser = async (id: string) => {
+  const [persistedUser] = await db
+    .select({
+      id: authUsers.id,
+      name: authUsers.name,
+      email: authUsers.email,
+    })
+    .from(authUsers)
+    .where(eq(authUsers.id, id))
+    .limit(1);
+
+  return persistedUser ?? null;
+};
+
+const getPersistedMembership = async (userId: string) => {
+  const [membership] = await db
+    .select({
+      tenantId: tenantUsers.tenantId,
+      userId: tenantUsers.userId,
+      role: tenantUsers.role,
+      phone: tenantUsers.phone,
+    })
+    .from(tenantUsers)
+    .where(eq(tenantUsers.userId, userId))
+    .limit(1);
+
+  return membership ?? null;
 };
 
 const seedCourierListingData = async () => {
@@ -184,6 +216,17 @@ const seedCourierListingData = async () => {
     userId: 'manager-1',
     role: 'manager',
     phone: '+15551234567',
+  });
+  await insertUser({
+    id: 'owner-2',
+    name: 'Tenant Owner',
+    email: 'owner@example.com',
+  });
+  await insertTenantMembership({
+    id: 'tenant-user-owner-2',
+    userId: 'owner-2',
+    role: 'owner',
+    phone: null,
   });
   await insertUser({
     id: 'other-tenant-courier-1',
@@ -353,6 +396,106 @@ describe('staff courier profile update routes', () => {
         code: 'STAFF_COURIER_NOT_FOUND',
         message: 'Courier could not be found.',
       });
+    }
+  );
+});
+
+describe('staff courier deletion routes', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    routeAuth.context = {
+      userId: 'owner-1',
+      tenantId: 'tenant-1',
+      role: 'owner',
+    };
+    await resetTenantTestData();
+    await seedCourierListingData();
+  }, 30_000);
+
+  it.each(['owner', 'manager'] as const)(
+    'allows a %s to delete a courier in their tenant',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.body).toEqual({});
+      await expect(getPersistedAuthUser('courier-1')).resolves.toBeNull();
+      await expect(getPersistedMembership('courier-1')).resolves.toBeNull();
+    }
+  );
+
+  it.each([
+    [
+      'manager',
+      'manager-1',
+      {
+        id: 'manager-1',
+        name: 'Manager User',
+        email: 'manager@example.com',
+      },
+      {
+        tenantId: 'tenant-1',
+        userId: 'manager-1',
+        role: 'manager',
+        phone: '+15551234567',
+      },
+    ],
+    [
+      'owner',
+      'owner-2',
+      {
+        id: 'owner-2',
+        name: 'Tenant Owner',
+        email: 'owner@example.com',
+      },
+      {
+        tenantId: 'tenant-1',
+        userId: 'owner-2',
+        role: 'owner',
+        phone: null,
+      },
+    ],
+    [
+      'courier from another tenant',
+      'other-tenant-courier-1',
+      {
+        id: 'other-tenant-courier-1',
+        name: 'Other Tenant Courier',
+        email: 'other@example.com',
+      },
+      {
+        tenantId: 'tenant-2',
+        userId: 'other-tenant-courier-1',
+        role: 'courier',
+        phone: '+15550000002',
+      },
+    ],
+  ] as const)(
+    'returns courier not found when deleting a %s',
+    async (_label, courierId, persistedUser, persistedMembership) => {
+      const response = await request(createApp()).delete(
+        `/api/staff/couriers/${courierId}`
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toEqual({
+        code: 'STAFF_COURIER_NOT_FOUND',
+        message: 'Courier could not be found.',
+      });
+      await expect(getPersistedAuthUser(courierId)).resolves.toEqual(
+        persistedUser
+      );
+      await expect(getPersistedMembership(courierId)).resolves.toEqual(
+        persistedMembership
+      );
     }
   );
 });
