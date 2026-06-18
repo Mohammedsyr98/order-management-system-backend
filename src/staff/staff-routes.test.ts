@@ -4,8 +4,11 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
+  ListCouriersResponse,
   ListManagersResponse,
+  UpdateCourierProfileResponse,
   UpdateManagerProfileResponse,
+  UpdateStaffProfileResponse,
 } from '../contracts/staff.js';
 
 type RouteAuthContext = {
@@ -75,6 +78,31 @@ vi.mock('../auth/auth-context.js', () => ({
 
     next();
   }),
+  requireManagerAccess: vi.fn((_req, res, next) => {
+    const context = res.locals.authContext as RouteAuthContext | undefined;
+
+    if (!context) {
+      res.status(401).json({
+        error: {
+          code: 'UNAUTHENTICATED',
+          message: 'You must sign in to perform this action.',
+        },
+      });
+      return;
+    }
+
+    if (!['owner', 'manager'].includes(context.role)) {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.',
+        },
+      });
+      return;
+    }
+
+    next();
+  }),
   requireTenantRole: vi.fn(
     (allowedRoles: RouteAuthContext['role'][]) =>
       (_req: Request, res: Response, next: NextFunction) => {
@@ -107,24 +135,33 @@ vi.mock('../auth/auth-context.js', () => ({
 
 vi.mock('./staff-service.js', () => ({
   createStaff: vi.fn(),
+  deleteCourier: vi.fn(),
   deleteManager: vi.fn(),
+  listCouriers: vi.fn(),
   listManagers: vi.fn(),
+  updateCourierProfile: vi.fn(),
   updateManagerProfile: vi.fn(),
   updateOwnStaffProfile: vi.fn(),
 }));
 
 const {
   createStaff,
+  deleteCourier,
   deleteManager,
+  listCouriers,
   listManagers,
+  updateCourierProfile,
   updateManagerProfile,
   updateOwnStaffProfile,
 } = await import('./staff-service.js');
 const { staffRouter } = await import('./staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
+const deleteCourierMock = vi.mocked(deleteCourier);
 const deleteManagerMock = vi.mocked(deleteManager);
+const listCouriersMock = vi.mocked(listCouriers);
 const listManagersMock = vi.mocked(listManagers);
+const updateCourierProfileMock = vi.mocked(updateCourierProfile);
 const updateManagerProfileMock = vi.mocked(updateManagerProfile);
 const updateOwnStaffProfileMock = vi.mocked(updateOwnStaffProfile);
 
@@ -156,6 +193,21 @@ const createdStaff = {
   },
 } as const;
 
+const courierRequest = {
+  ...staffRequest,
+  role: 'courier',
+  phone: '+15557654321',
+} as const;
+
+const createdCourier = {
+  ...createdStaff,
+  membership: {
+    ...createdStaff.membership,
+    role: 'courier',
+    phone: '+15557654321',
+  },
+} as const;
+
 const listedManagers: ListManagersResponse = {
   managers: [
     {
@@ -165,6 +217,19 @@ const listedManagers: ListManagersResponse = {
       tenantId: 'tenant-1',
       role: 'manager',
       phone: '+15551234567',
+    },
+  ],
+};
+
+const listedCouriers: ListCouriersResponse = {
+  couriers: [
+    {
+      id: 'courier-1',
+      name: 'Courier User',
+      email: 'courier@example.com',
+      tenantId: 'tenant-1',
+      role: 'courier',
+      phone: '+15557654321',
     },
   ],
 };
@@ -180,8 +245,23 @@ const updatedManager: UpdateManagerProfileResponse = {
   },
 };
 
+const updatedCourier: UpdateCourierProfileResponse = {
+  courier: {
+    id: 'courier-1',
+    name: 'Updated Courier',
+    email: 'courier@example.com',
+    tenantId: 'tenant-1',
+    role: 'courier',
+    phone: '+15557654321',
+  },
+};
+
 const updatedStaff = {
   staff: updatedManager.manager,
+};
+
+const updatedCourierStaff: UpdateStaffProfileResponse = {
+  staff: updatedCourier.courier,
 };
 
 describe('staff routes', () => {
@@ -196,8 +276,14 @@ describe('staff routes', () => {
       ok: true,
       data: createdStaff,
     });
+    deleteCourierMock.mockResolvedValue({ ok: true });
     deleteManagerMock.mockResolvedValue({ ok: true });
+    listCouriersMock.mockResolvedValue(listedCouriers);
     listManagersMock.mockResolvedValue(listedManagers);
+    updateCourierProfileMock.mockResolvedValue({
+      ok: true,
+      data: updatedCourier,
+    });
     updateManagerProfileMock.mockResolvedValue({
       ok: true,
       data: updatedManager,
@@ -214,6 +300,72 @@ describe('staff routes', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual(listedManagers);
     expect(listManagersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('lists couriers for an owner tenant', async () => {
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(listedCouriers);
+    expect(listCouriersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('lists couriers for a manager tenant', async () => {
+    routeAuth.context = {
+      userId: 'manager-1',
+      tenantId: 'tenant-1',
+      role: 'manager',
+    };
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(listedCouriers);
+    expect(listCouriersMock).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('rejects courier listing for courier users', async () => {
+    routeAuth.context = {
+      userId: 'courier-1',
+      tenantId: 'tenant-1',
+      role: 'courier',
+    };
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'FORBIDDEN',
+      message: 'You do not have permission to perform this action.',
+    });
+    expect(listCouriersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated courier listing requests', async () => {
+    routeAuth.context = null;
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toEqual({
+      code: 'UNAUTHENTICATED',
+      message: 'You must sign in to perform this action.',
+    });
+    expect(listCouriersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects courier listing for authenticated users without tenant membership', async () => {
+    routeAuth.context = 'missing-membership';
+
+    const response = await request(createApp()).get('/api/staff/couriers');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toEqual({
+      code: 'TENANT_MEMBERSHIP_REQUIRED',
+      message:
+        'Your account is not linked to a tenant. Contact support for help.',
+    });
+    expect(listCouriersMock).not.toHaveBeenCalled();
   });
 
   it('rejects unauthenticated manager listing requests', async () => {
@@ -282,6 +434,51 @@ describe('staff routes', () => {
     );
   });
 
+  it('updates a courier profile through the service and returns the updated courier payload', async () => {
+    const requestBody = {
+      name: 'Updated Courier',
+      phone: '+15557654321',
+    };
+
+    const response = await request(createApp())
+      .patch('/api/staff/couriers/courier-1')
+      .send(requestBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(updatedCourier);
+    expect(updateCourierProfileMock).toHaveBeenCalledWith(
+      'tenant-1',
+      'courier-1',
+      requestBody
+    );
+  });
+
+  it.each([
+    ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
+    ['STAFF_COURIER_NOT_FOUND', 404, 'Courier could not be found.'],
+    ['STAFF_UPDATE_FAILED', 422, 'Staff account could not be updated.'],
+  ] as const)(
+    'maps %s courier update service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      updateCourierProfileMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp())
+        .patch('/api/staff/couriers/courier-1')
+        .send({
+          name: 'Updated Courier',
+        });
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
+    }
+  );
+
   it.each([
     ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
     ['STAFF_MANAGER_NOT_FOUND', 404, 'Manager could not be found.'],
@@ -331,7 +528,34 @@ describe('staff routes', () => {
     );
   });
 
-  it.each(['owner', 'courier'] as const)(
+  it('updates the authenticated courier through the self-profile service', async () => {
+    routeAuth.context = {
+      userId: 'courier-1',
+      tenantId: 'tenant-1',
+      role: 'courier',
+    };
+    updateOwnStaffProfileMock.mockResolvedValue({
+      ok: true,
+      data: updatedCourierStaff,
+    });
+    const requestBody = {
+      name: 'Updated Courier',
+      phone: '+15557654321',
+    };
+
+    const response = await request(createApp())
+      .patch('/api/staff/me')
+      .send(requestBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(updatedCourierStaff);
+    expect(updateOwnStaffProfileMock).toHaveBeenCalledWith(
+      routeAuth.context,
+      requestBody
+    );
+  });
+
+  it.each(['owner'] as const)(
     'rejects self-profile updates from %s users',
     async (role) => {
       routeAuth.context = {
@@ -387,6 +611,7 @@ describe('staff routes', () => {
   it.each([
     ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],
     ['STAFF_MANAGER_NOT_FOUND', 404, 'Manager could not be found.'],
+    ['STAFF_COURIER_NOT_FOUND', 404, 'Courier could not be found.'],
     ['STAFF_UPDATE_FAILED', 422, 'Staff account could not be updated.'],
   ] as const)(
     'maps %s self-profile service failures to HTTP %i responses',
@@ -410,6 +635,89 @@ describe('staff routes', () => {
         code: errorCode,
         message,
       });
+    }
+  );
+
+  it.each(['owner', 'manager'] as const)(
+    'deletes a courier through the service for a %s tenant and returns no content',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.body).toEqual({});
+      expect(deleteCourierMock).toHaveBeenCalledWith('tenant-1', 'courier-1');
+    }
+  );
+
+  it.each([
+    ['STAFF_COURIER_NOT_FOUND', 404, 'Courier could not be found.'],
+    ['STAFF_DELETE_FAILED', 422, 'Staff account could not be deleted.'],
+  ] as const)(
+    'maps %s courier deletion service failures to HTTP %i responses',
+    async (errorCode, status, message) => {
+      deleteCourierMock.mockResolvedValue({
+        ok: false,
+        errorCode,
+      });
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({
+        code: errorCode,
+        message,
+      });
+    }
+  );
+
+  it.each([
+    [
+      'courier users',
+      {
+        userId: 'courier-1',
+        tenantId: 'tenant-1',
+        role: 'courier',
+      },
+      403,
+      'FORBIDDEN',
+      'You do not have permission to perform this action.',
+    ],
+    [
+      'unauthenticated users',
+      null,
+      401,
+      'UNAUTHENTICATED',
+      'You must sign in to perform this action.',
+    ],
+    [
+      'authenticated users without tenant membership',
+      'missing-membership',
+      403,
+      'TENANT_MEMBERSHIP_REQUIRED',
+      'Your account is not linked to a tenant. Contact support for help.',
+    ],
+  ] as const)(
+    'rejects courier deletion for %s',
+    async (_label, context, status, code, message) => {
+      routeAuth.context = context;
+
+      const response = await request(createApp()).delete(
+        '/api/staff/couriers/courier-1'
+      );
+
+      expect(response.status).toBe(status);
+      expect(response.body.error).toEqual({ code, message });
+      expect(deleteCourierMock).not.toHaveBeenCalled();
     }
   );
 
@@ -494,6 +802,32 @@ describe('staff routes', () => {
       requestBody
     );
   });
+
+  it.each(['owner', 'manager'] as const)(
+    'allows a %s to create a courier with a phone',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+      createStaffMock.mockResolvedValue({
+        ok: true,
+        data: createdCourier,
+      });
+
+      const response = await request(createApp())
+        .post('/api/staff')
+        .send(courierRequest);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(createdCourier);
+      expect(createStaffMock).toHaveBeenCalledWith(
+        routeAuth.context,
+        courierRequest
+      );
+    }
+  );
 
   it.each([
     ['INVALID_STAFF_REQUEST', 400, 'Staff request is invalid.'],

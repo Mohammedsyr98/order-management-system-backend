@@ -2,31 +2,39 @@ import { Router } from 'express';
 
 import {
   requireAuthContext,
+  requireManagerAccess,
   requireOwnerAccess,
   requireTenantRole,
   type ResolvedAuthContext,
 } from '../auth/auth-context.js';
 import type {
   CreateStaffRequest,
+  UpdateCourierProfileRequest,
   UpdateManagerProfileRequest,
   UpdateStaffProfileRequest,
 } from '../contracts/staff.js';
 import { sendApiError } from '../http/api-errors.js';
 import {
   createStaff,
+  deleteCourier,
   deleteManager,
+  listCouriers,
   listManagers,
+  updateCourierProfile,
   updateManagerProfile,
   updateOwnStaffProfile,
 } from './staff-service.js';
 import type {
+  DeleteCourierErrorCode,
   DeleteManagerErrorCode,
+  UpdateCourierProfileErrorCode,
   UpdateManagerProfileErrorCode,
+  UpdateStaffProfileErrorCode,
 } from './staff-types.js';
 
 export const staffRouter = Router();
 
-const requireManagerSelfAccess = requireTenantRole(['manager']);
+const requireStaffSelfAccess = requireTenantRole(['manager', 'courier']);
 
 const updateManagerProfileStatus = (
   errorCode: UpdateManagerProfileErrorCode
@@ -37,13 +45,33 @@ const updateManagerProfileStatus = (
       ? 404
       : 422;
 
+const updateCourierProfileStatus = (
+  errorCode: UpdateCourierProfileErrorCode
+) =>
+  errorCode === 'INVALID_STAFF_REQUEST'
+    ? 400
+    : errorCode === 'STAFF_COURIER_NOT_FOUND'
+      ? 404
+      : 422;
+
+const staffProfileErrorStatus = (errorCode: UpdateStaffProfileErrorCode) =>
+  errorCode === 'INVALID_STAFF_REQUEST'
+    ? 400
+    : errorCode === 'STAFF_MANAGER_NOT_FOUND' ||
+        errorCode === 'STAFF_COURIER_NOT_FOUND'
+      ? 404
+      : 422;
+
 const deleteManagerStatus = (errorCode: DeleteManagerErrorCode) =>
   errorCode === 'STAFF_MANAGER_NOT_FOUND' ? 404 : 422;
+
+const deleteCourierStatus = (errorCode: DeleteCourierErrorCode) =>
+  errorCode === 'STAFF_COURIER_NOT_FOUND' ? 404 : 422;
 
 staffRouter.patch(
   '/me',
   requireAuthContext,
-  requireManagerSelfAccess,
+  requireStaffSelfAccess,
   async (req, res) => {
     const context = res.locals.authContext as ResolvedAuthContext;
     const result = await updateOwnStaffProfile(
@@ -54,13 +82,86 @@ staffRouter.patch(
     if (!result.ok) {
       sendApiError(
         res,
-        updateManagerProfileStatus(result.errorCode),
+        staffProfileErrorStatus(result.errorCode),
         result.errorCode
       );
       return;
     }
 
     res.json(result.data);
+  }
+);
+
+staffRouter.get(
+  '/couriers',
+  requireAuthContext,
+  requireManagerAccess,
+  async (_req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const couriers = await listCouriers(context.tenantId);
+
+    res.json(couriers);
+  }
+);
+
+staffRouter.patch(
+  '/couriers/:courierId',
+  requireAuthContext,
+  requireManagerAccess,
+  async (req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const body = req.body as UpdateCourierProfileRequest;
+    const { courierId } = req.params;
+
+    if (typeof courierId !== 'string') {
+      sendApiError(res, 400, 'INVALID_STAFF_REQUEST');
+      return;
+    }
+
+    const result = await updateCourierProfile(
+      context.tenantId,
+      courierId,
+      body
+    );
+
+    if (!result.ok) {
+      sendApiError(
+        res,
+        updateCourierProfileStatus(result.errorCode),
+        result.errorCode
+      );
+      return;
+    }
+
+    res.json(result.data);
+  }
+);
+
+staffRouter.delete(
+  '/couriers/:courierId',
+  requireAuthContext,
+  requireManagerAccess,
+  async (req, res) => {
+    const context = res.locals.authContext as ResolvedAuthContext;
+    const { courierId } = req.params;
+
+    if (typeof courierId !== 'string') {
+      sendApiError(res, 400, 'INVALID_STAFF_REQUEST');
+      return;
+    }
+
+    const result = await deleteCourier(context.tenantId, courierId);
+
+    if (!result.ok) {
+      sendApiError(
+        res,
+        deleteCourierStatus(result.errorCode),
+        result.errorCode
+      );
+      return;
+    }
+
+    res.status(204).end();
   }
 );
 

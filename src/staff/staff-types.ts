@@ -1,6 +1,7 @@
 import type { ApiErrorCode } from '../contracts/api.js';
 import type {
   CreateStaffResponse,
+  UpdateCourierProfileResponse,
   UpdateManagerProfileResponse,
   UpdateStaffProfileResponse,
 } from '../contracts/staff.js';
@@ -26,9 +27,22 @@ export type UpdateManagerProfileResult =
   | { ok: true; data: UpdateManagerProfileResponse }
   | { ok: false; errorCode: UpdateManagerProfileErrorCode };
 
+export type UpdateCourierProfileErrorCode = Extract<
+  ApiErrorCode,
+  'INVALID_STAFF_REQUEST' | 'STAFF_COURIER_NOT_FOUND' | 'STAFF_UPDATE_FAILED'
+>;
+
+export type UpdateCourierProfileResult =
+  | { ok: true; data: UpdateCourierProfileResponse }
+  | { ok: false; errorCode: UpdateCourierProfileErrorCode };
+
+export type UpdateStaffProfileErrorCode =
+  | UpdateManagerProfileErrorCode
+  | UpdateCourierProfileErrorCode;
+
 export type UpdateStaffProfileResult =
   | { ok: true; data: UpdateStaffProfileResponse }
-  | { ok: false; errorCode: UpdateManagerProfileErrorCode };
+  | { ok: false; errorCode: UpdateStaffProfileErrorCode };
 
 export type DeleteManagerErrorCode = Extract<
   ApiErrorCode,
@@ -38,3 +52,12 @@ export type DeleteManagerErrorCode = Extract<
 export type DeleteManagerResult =
   | { ok: true }
   | { ok: false; errorCode: DeleteManagerErrorCode };
+
+export type DeleteCourierErrorCode = Extract<
+  ApiErrorCode,
+  'STAFF_COURIER_NOT_FOUND' | 'STAFF_DELETE_FAILED'
+>;
+
+export type DeleteCourierResult =
+  | { ok: true }
+  | { ok: false; errorCode: DeleteCourierErrorCode };

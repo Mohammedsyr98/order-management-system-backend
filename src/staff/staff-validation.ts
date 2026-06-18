@@ -1,23 +1,49 @@
 import { z } from 'zod';
 
-import { STAFF_ROLES } from '../contracts/roles.js';
-
-export const createStaffSchema = z.object({
+const createStaffBaseSchema = {
   name: z.string(),
   email: z.string().trim().toLowerCase(),
   password: z.string(),
-  role: z.enum(STAFF_ROLES),
-  phone: z
-    .string()
-    .trim()
-    .nullish()
-    .transform((phone) => (phone && phone.length > 0 ? phone : null)),
-});
+};
+
+export const createStaffSchema = z.discriminatedUnion('role', [
+  z.object({
+    ...createStaffBaseSchema,
+    role: z.literal('manager'),
+    phone: z
+      .string()
+      .trim()
+      .nullish()
+      .transform((phone) => (phone && phone.length > 0 ? phone : null)),
+  }),
+  z.object({
+    ...createStaffBaseSchema,
+    role: z.literal('courier'),
+    phone: z.string().trim().min(1),
+  }),
+]);
 
 export type ValidCreateStaffRequest = z.infer<typeof createStaffSchema>;
 
 export const parseCreateStaffRequest = (value: unknown) =>
   createStaffSchema.safeParse(value);
+
+export const updateCourierProfileSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(1).optional(),
+  })
+  .refine(
+    (profile) => Object.values(profile).some((value) => value !== undefined),
+    'At least one courier profile field is required.'
+  );
+
+export type ValidUpdateCourierProfileRequest = z.infer<
+  typeof updateCourierProfileSchema
+>;
+
+export const parseUpdateCourierProfileRequest = (value: unknown) =>
+  updateCourierProfileSchema.safeParse(value);
 
 export const updateManagerProfileSchema = z
   .strictObject({

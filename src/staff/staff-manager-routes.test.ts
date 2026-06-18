@@ -79,6 +79,31 @@ vi.mock('../auth/auth-context.js', () => ({
 
     next();
   }),
+  requireManagerAccess: vi.fn((_req, res, next) => {
+    const context = res.locals.authContext as RouteAuthContext | undefined;
+
+    if (!context) {
+      res.status(401).json({
+        error: {
+          code: 'UNAUTHENTICATED',
+          message: 'You must sign in to perform this action.',
+        },
+      });
+      return;
+    }
+
+    if (!['owner', 'manager'].includes(context.role)) {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.',
+        },
+      });
+      return;
+    }
+
+    next();
+  }),
   requireTenantRole: vi.fn(
     (allowedRoles: RouteAuthContext['role'][]) =>
       (_req: Request, res: Response, next: NextFunction) => {
@@ -545,7 +570,7 @@ describe('staff manager routes', () => {
       }
     );
 
-    it.each(['owner', 'courier'] as const)(
+    it.each(['owner'] as const)(
       'rejects self-profile updates from %s users',
       async (role) => {
         await seedManagerProfileData();
