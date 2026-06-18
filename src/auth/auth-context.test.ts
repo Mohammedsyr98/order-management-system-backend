@@ -56,7 +56,8 @@ const mockMembershipRows = (
 ) => {
   const limit = vi.fn().mockResolvedValue(rows);
   const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
+  const innerJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ innerJoin });
 
   select.mockReturnValue({ from } as unknown as ReturnType<typeof db.select>);
 };

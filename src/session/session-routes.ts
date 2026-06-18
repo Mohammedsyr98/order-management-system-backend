@@ -1,39 +1,19 @@
 import type { Request } from 'express';
 import { Router } from 'express';
 import { APIError } from 'better-auth';
-import { eq } from 'drizzle-orm';
 
-import { db } from '../db/index.js';
-import { tenants, tenantUsers } from '../db/schema.js';
 import { sendApiError } from '../http/api-errors.js';
-import { auth } from '../auth/auth.js';
+import {
+  resolveSession,
+  resolveTenantContext,
+  signInWithEmail,
+  signOut,
+} from '../auth/app-session-context.js';
 import type {
   AppSessionContext,
   AppSessionUser,
-  LoginRequestBody,
-  SignInEmailResultWithHeaders,
-} from './session-types.js';
-
-const headersFromRequest = (req: Request) => {
-  const headers = new Headers();
-
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (value === undefined) {
-      continue;
-    }
-
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        headers.append(name, item);
-      }
-      continue;
-    }
-
-    headers.set(name, value);
-  }
-
-  return headers;
-};
+} from '../auth/app-session-context-types.js';
+import type { LoginRequestBody } from './session-types.js';
 
 const getSetCookieHeaders = (headers: Headers) => {
   const withGetSetCookie = headers as Headers & {
@@ -48,27 +28,12 @@ const getSetCookieHeaders = (headers: Headers) => {
   );
 };
 
-const trySignOut = async (headers: Headers) => {
+const trySignOut = async (req: Request) => {
   try {
-    await auth.api.signOut({ headers });
+    await signOut(req);
   } catch {
     // Best-effort cleanup after a session wrapper failure.
   }
-};
-
-const resolveAppSessionContext = async (userId: string) => {
-  const [context] = await db
-    .select({
-      tenantId: tenantUsers.tenantId,
-      tenantName: tenants.name,
-      role: tenantUsers.role,
-    })
-    .from(tenantUsers)
-    .innerJoin(tenants, eq(tenants.id, tenantUsers.tenantId))
-    .where(eq(tenantUsers.userId, userId))
-    .limit(1);
-
-  return context satisfies AppSessionContext | undefined;
 };
 
 const appSessionResponse = (
@@ -101,17 +66,33 @@ sessionRouter.post('/login', async (req, res) => {
     return;
   }
 
-  let authResult: SignInEmailResultWithHeaders;
-
   try {
-    authResult = await auth.api.signInEmail({
-      body: {
-        email,
-        password: body.password,
-      },
-      headers: headersFromRequest(req),
-      returnHeaders: true,
+    const authResult = await signInWithEmail(req, {
+      email,
+      password: body.password,
     });
+
+    let context: AppSessionContext | undefined;
+
+    try {
+      context = await resolveTenantContext(authResult.response.user.id);
+    } catch {
+      await trySignOut(req);
+      sendApiError(res, 500, 'SESSION_CONTEXT_FAILED');
+      return;
+    }
+
+    if (!context) {
+      await trySignOut(req);
+      sendApiError(res, 403, 'TENANT_MEMBERSHIP_REQUIRED');
+      return;
+    }
+
+    for (const cookie of getSetCookieHeaders(authResult.headers)) {
+      res.append('set-cookie', cookie);
+    }
+
+    res.json(appSessionResponse(authResult.response.user, context));
   } catch (error) {
     if (error instanceof APIError) {
       if (error.status === 'BAD_REQUEST' || error.statusCode === 400) {
@@ -125,53 +106,25 @@ sessionRouter.post('/login', async (req, res) => {
 
     throw error;
   }
-
-  const requestHeaders = headersFromRequest(req);
-
-  let context: AppSessionContext | undefined;
-
-  try {
-    context = await resolveAppSessionContext(authResult.response.user.id);
-  } catch {
-    await trySignOut(requestHeaders);
-    sendApiError(res, 500, 'SESSION_CONTEXT_FAILED');
-    return;
-  }
-
-  if (!context) {
-    await trySignOut(requestHeaders);
-    sendApiError(res, 403, 'TENANT_MEMBERSHIP_REQUIRED');
-    return;
-  }
-
-  for (const cookie of getSetCookieHeaders(authResult.headers)) {
-    res.append('set-cookie', cookie);
-  }
-
-  res.json(appSessionResponse(authResult.response.user, context));
 });
 
 sessionRouter.get('/current', async (req, res) => {
-  const session = await auth.api.getSession({
-    headers: headersFromRequest(req),
-  });
+  const session = await resolveSession(req);
 
-  if (!session) {
+  if (session === null) {
     sendApiError(res, 401, 'UNAUTHENTICATED');
     return;
   }
 
-  const context = await resolveAppSessionContext(session.user.id);
-
-  if (!context) {
+  if (session === 'missing-membership') {
     sendApiError(res, 403, 'TENANT_MEMBERSHIP_REQUIRED');
     return;
   }
 
-  res.json(appSessionResponse(session.user, context));
+  res.json(appSessionResponse(session.user, session.context));
 });
 
 sessionRouter.post('/logout', async (req, res) => {
-  await trySignOut(headersFromRequest(req));
+  await trySignOut(req);
   res.status(204).end();
 });
