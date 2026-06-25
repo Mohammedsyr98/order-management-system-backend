@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 
 import {
   requireAuthContext,
@@ -27,8 +27,7 @@ import {
 import type {
   DeleteCourierErrorCode,
   DeleteManagerErrorCode,
-  UpdateCourierProfileErrorCode,
-  UpdateManagerProfileErrorCode,
+  StaffCreationErrorCode,
   UpdateStaffProfileErrorCode,
 } from './staff-types.js';
 
@@ -36,37 +35,25 @@ export const staffRouter = Router();
 
 const requireStaffSelfAccess = requireTenantRole(['manager', 'courier']);
 
-const updateManagerProfileStatus = (
-  errorCode: UpdateManagerProfileErrorCode
-) =>
-  errorCode === 'INVALID_STAFF_REQUEST'
-    ? 400
-    : errorCode === 'STAFF_MANAGER_NOT_FOUND'
-      ? 404
-      : 422;
+type StaffRouteErrorCode =
+  | StaffCreationErrorCode
+  | UpdateStaffProfileErrorCode
+  | DeleteManagerErrorCode
+  | DeleteCourierErrorCode;
 
-const updateCourierProfileStatus = (
-  errorCode: UpdateCourierProfileErrorCode
-) =>
-  errorCode === 'INVALID_STAFF_REQUEST'
-    ? 400
-    : errorCode === 'STAFF_COURIER_NOT_FOUND'
-      ? 404
-      : 422;
+const sendStaffError = (res: Response, errorCode: StaffRouteErrorCode) => {
+  const status =
+    errorCode === 'INVALID_STAFF_REQUEST'
+      ? 400
+      : errorCode === 'FORBIDDEN'
+        ? 403
+        : errorCode === 'STAFF_MANAGER_NOT_FOUND' ||
+            errorCode === 'STAFF_COURIER_NOT_FOUND'
+          ? 404
+          : 422;
 
-const staffProfileErrorStatus = (errorCode: UpdateStaffProfileErrorCode) =>
-  errorCode === 'INVALID_STAFF_REQUEST'
-    ? 400
-    : errorCode === 'STAFF_MANAGER_NOT_FOUND' ||
-        errorCode === 'STAFF_COURIER_NOT_FOUND'
-      ? 404
-      : 422;
-
-const deleteManagerStatus = (errorCode: DeleteManagerErrorCode) =>
-  errorCode === 'STAFF_MANAGER_NOT_FOUND' ? 404 : 422;
-
-const deleteCourierStatus = (errorCode: DeleteCourierErrorCode) =>
-  errorCode === 'STAFF_COURIER_NOT_FOUND' ? 404 : 422;
+  return sendApiError(res, status, errorCode);
+};
 
 staffRouter.patch(
   '/me',
@@ -80,11 +67,7 @@ staffRouter.patch(
     );
 
     if (!result.ok) {
-      sendApiError(
-        res,
-        staffProfileErrorStatus(result.errorCode),
-        result.errorCode
-      );
+      sendStaffError(res, result.errorCode);
       return;
     }
 
@@ -125,11 +108,7 @@ staffRouter.patch(
     );
 
     if (!result.ok) {
-      sendApiError(
-        res,
-        updateCourierProfileStatus(result.errorCode),
-        result.errorCode
-      );
+      sendStaffError(res, result.errorCode);
       return;
     }
 
@@ -153,11 +132,7 @@ staffRouter.delete(
     const result = await deleteCourier(context.tenantId, courierId);
 
     if (!result.ok) {
-      sendApiError(
-        res,
-        deleteCourierStatus(result.errorCode),
-        result.errorCode
-      );
+      sendStaffError(res, result.errorCode);
       return;
     }
 
@@ -198,11 +173,7 @@ staffRouter.patch(
     );
 
     if (!result.ok) {
-      sendApiError(
-        res,
-        updateManagerProfileStatus(result.errorCode),
-        result.errorCode
-      );
+      sendStaffError(res, result.errorCode);
       return;
     }
 
@@ -226,11 +197,7 @@ staffRouter.delete(
     const result = await deleteManager(context.tenantId, managerId);
 
     if (!result.ok) {
-      sendApiError(
-        res,
-        deleteManagerStatus(result.errorCode),
-        result.errorCode
-      );
+      sendStaffError(res, result.errorCode);
       return;
     }
 
@@ -246,14 +213,7 @@ staffRouter.post('/', requireAuthContext, async (req, res) => {
   );
 
   if (!result.ok) {
-    const status =
-      result.errorCode === 'INVALID_STAFF_REQUEST'
-        ? 400
-        : result.errorCode === 'FORBIDDEN'
-          ? 403
-          : 422;
-
-    sendApiError(res, status, result.errorCode);
+    sendStaffError(res, result.errorCode);
     return;
   }
 
