@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { StaffRole } from '../contracts/roles.js';
+
 const createStaffBaseSchema = {
   name: z.string(),
   email: z.string().trim().toLowerCase(),
@@ -28,7 +30,7 @@ export type ValidCreateStaffRequest = z.infer<typeof createStaffSchema>;
 export const parseCreateStaffRequest = (value: unknown) =>
   createStaffSchema.safeParse(value);
 
-export const updateCourierProfileSchema = z
+const updateCourierProfileSchema = z
   .strictObject({
     name: z.string().trim().min(1).optional(),
     phone: z.string().trim().min(1).optional(),
@@ -38,14 +40,11 @@ export const updateCourierProfileSchema = z
     'At least one courier profile field is required.'
   );
 
-export type ValidUpdateCourierProfileRequest = z.infer<
+type ValidUpdateCourierProfileRequest = z.infer<
   typeof updateCourierProfileSchema
 >;
 
-export const parseUpdateCourierProfileRequest = (value: unknown) =>
-  updateCourierProfileSchema.safeParse(value);
-
-export const updateManagerProfileSchema = z
+const updateManagerProfileSchema = z
   .strictObject({
     name: z.string().trim().min(1).optional(),
     phone: z
@@ -60,9 +59,15 @@ export const updateManagerProfileSchema = z
     'At least one manager profile field is required.'
   );
 
-export type ValidUpdateManagerProfileRequest = z.infer<
+type ValidUpdateManagerProfileRequest = z.infer<
   typeof updateManagerProfileSchema
 >;
 
-export const parseUpdateManagerProfileRequest = (value: unknown) =>
-  updateManagerProfileSchema.safeParse(value);
+export type ValidStaffProfileUpdate =
+  | ValidUpdateManagerProfileRequest
+  | ValidUpdateCourierProfileRequest;
+
+export const parseStaffProfileUpdate = (role: StaffRole, value: unknown) =>
+  role === 'courier'
+    ? updateCourierProfileSchema.safeParse(value)
+    : updateManagerProfileSchema.safeParse(value);
