@@ -1,12 +1,13 @@
 import { Router, type Response } from 'express';
 
+import type { LoginRequestBody } from '../contracts/session.js';
 import { sendApiError } from '../http/api-errors.js';
 import {
   getCurrentSession,
   loginSession,
   logoutSession,
 } from './session-service.js';
-import type { LoginRequestBody, SessionErrorCode } from './session-types.js';
+import type { SessionErrorCode } from './session-types.js';
 
 const sessionErrorStatus = (errorCode: SessionErrorCode) =>
   errorCode === 'INVALID_LOGIN_REQUEST'

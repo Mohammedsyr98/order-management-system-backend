@@ -3,14 +3,16 @@ import { APIError } from 'better-auth';
 import { eq } from 'drizzle-orm';
 
 import { auth } from '../auth/auth.js';
+import type {
+  AppSessionResponse,
+  AppSessionUser,
+  LoginRequestBody,
+} from '../contracts/session.js';
 import { db } from '../db/index.js';
 import { tenants, tenantUsers } from '../db/schema.js';
 import type {
   AppSessionContext,
   AppSessionResolution,
-  AppSessionResponse,
-  AppSessionUser,
-  LoginRequestBody,
   SessionCommandResult,
 } from './session-types.js';
 

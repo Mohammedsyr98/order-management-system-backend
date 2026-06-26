@@ -1,16 +1,9 @@
 import type { ApiErrorCode } from '../contracts/api.js';
 import type { TenantRole } from '../contracts/roles.js';
-
-export type LoginRequestBody = {
-  email?: unknown;
-  password?: unknown;
-};
-
-export type AppSessionUser = {
-  id: string;
-  name: string;
-  email: string;
-};
+import type {
+  AppSessionResponse,
+  AppSessionUser,
+} from '../contracts/session.js';
 
 export type AppSessionContext = {
   tenantId: string;
@@ -25,21 +18,6 @@ export type AppSessionResolution =
     }
   | null
   | 'missing-membership';
-
-export type AppSessionResponse = {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  tenant: {
-    id: string;
-    name: string;
-  };
-  membership: {
-    role: TenantRole;
-  };
-};
 
 export type SessionErrorCode = Extract<
   ApiErrorCode,
