@@ -1,19 +1,36 @@
 import type { NextFunction, Request, Response } from 'express';
 
-import type {
-  AuthContextResolution,
-  ResolvedAuthContext,
-  TenantRole,
-} from './app-session-context-types.js';
-import { resolveAuthContext as resolveRequestAuthContext } from './app-session-context.js';
+import type { TenantRole } from '../contracts/roles.js';
 import { sendApiError } from '../http/api-errors.js';
+import { resolveSession } from '../session/session-service.js';
 
-export type { AuthContextResolution, ResolvedAuthContext, TenantRole };
+export type { TenantRole };
+
+export type ResolvedAuthContext = {
+  userId: string;
+  tenantId: string;
+  role: TenantRole;
+};
+
+export type AuthContextResolution =
+  | ResolvedAuthContext
+  | null
+  | 'missing-membership';
 
 export const resolveAuthContext = async (
   req: Request
 ): Promise<AuthContextResolution> => {
-  return resolveRequestAuthContext(req);
+  const session = await resolveSession(req);
+
+  if (session === null || session === 'missing-membership') {
+    return session;
+  }
+
+  return {
+    userId: session.user.id,
+    tenantId: session.context.tenantId,
+    role: session.context.role,
+  };
 };
 
 export const requireAuthContext = async (

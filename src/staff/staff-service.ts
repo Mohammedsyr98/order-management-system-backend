@@ -28,10 +28,8 @@ import type {
 } from './staff-types.js';
 import {
   parseCreateStaffRequest,
-  parseUpdateCourierProfileRequest,
-  parseUpdateManagerProfileRequest,
-  type ValidUpdateCourierProfileRequest,
-  type ValidUpdateManagerProfileRequest,
+  parseStaffProfileUpdate,
+  type ValidStaffProfileUpdate,
 } from './staff-validation.js';
 
 const cleanupCreatedUser = async (userId: string) => {
@@ -53,16 +51,12 @@ const staffProfileSelect = {
   phone: tenantUsers.phone,
 };
 
-type ManagedStaffRole = 'manager' | 'courier';
 type ManagedStaffProfile = ManagerListItem | CourierListItem;
-type ValidManagedStaffUpdate =
-  | ValidUpdateManagerProfileRequest
-  | ValidUpdateCourierProfileRequest;
 
 const findStaffProfile = async (
   tenantId: string,
   staffId: string,
-  role: ManagedStaffRole
+  role: StaffRole
 ): Promise<ManagedStaffProfile | null> => {
   const [staff] = await db
     .select(staffProfileSelect)
@@ -97,7 +91,7 @@ async function listStaffByRole(
 ): Promise<CourierListItem[]>;
 async function listStaffByRole(
   tenantId: string,
-  role: 'manager' | 'courier'
+  role: StaffRole
 ): Promise<Array<ManagerListItem | CourierListItem>> {
   const staff = await db
     .select(staffProfileSelect)
@@ -115,8 +109,8 @@ async function listStaffByRole(
 const updateStaffProfileByRole = async (
   tenantId: string,
   staffId: string,
-  role: ManagedStaffRole,
-  update: ValidManagedStaffUpdate
+  role: StaffRole,
+  update: ValidStaffProfileUpdate
 ): Promise<
   | { ok: true; profile: ManagedStaffProfile }
   | { ok: false; reason: 'NOT_FOUND' | 'UPDATE_FAILED' }
@@ -268,7 +262,7 @@ export const updateCourierProfile = async (
   courierId: string,
   request: UpdateCourierProfileRequest
 ): Promise<UpdateCourierProfileResult> => {
-  const validation = parseUpdateCourierProfileRequest(request);
+  const validation = parseStaffProfileUpdate('courier', request);
 
   if (!validation.success) {
     return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
@@ -304,7 +298,7 @@ export const updateManagerProfile = async (
   managerId: string,
   request: UpdateManagerProfileRequest
 ): Promise<UpdateManagerProfileResult> => {
-  const validation = parseUpdateManagerProfileRequest(request);
+  const validation = parseStaffProfileUpdate('manager', request);
 
   if (!validation.success) {
     return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
@@ -339,12 +333,9 @@ export const updateOwnStaffProfile = async (
   authContext: ResolvedAuthContext,
   request: UpdateStaffProfileRequest
 ): Promise<UpdateStaffProfileResult> => {
-  const role: ManagedStaffRole =
+  const role: StaffRole =
     authContext.role === 'courier' ? 'courier' : 'manager';
-  const validation =
-    role === 'courier'
-      ? parseUpdateCourierProfileRequest(request)
-      : parseUpdateManagerProfileRequest(request);
+  const validation = parseStaffProfileUpdate(role, request);
 
   if (!validation.success) {
     return { ok: false, errorCode: 'INVALID_STAFF_REQUEST' };
