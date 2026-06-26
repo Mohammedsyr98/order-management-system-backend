@@ -2,7 +2,10 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { defaultOperatingHours } from '../contracts/tenant.js';
+import {
+  defaultOperatingHours,
+  defaultTenantTimezone,
+} from '../contracts/tenant.js';
 
 const routeAuth = vi.hoisted(() => ({
   context: {
@@ -77,7 +80,7 @@ const tenant = {
   id: 'tenant-1',
   name: 'Main Tenant',
   phone: '+15550000000',
-  timezone: 'Europe/Istanbul',
+  timezone: defaultTenantTimezone,
   operatingHours: defaultOperatingHours,
 };
 
