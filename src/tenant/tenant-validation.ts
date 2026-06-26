@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { OperatingHours } from '../contracts/tenant.js';
+import { weekDays, type OperatingHours } from '../contracts/tenant.js';
 
 const isValidTimezone = (value: string) => {
   try {
@@ -41,15 +41,13 @@ const operatingDaySchema = z.union([
   openOperatingDaySchema,
 ]);
 
-const operatingHoursSchema = z.strictObject({
-  monday: operatingDaySchema,
-  tuesday: operatingDaySchema,
-  wednesday: operatingDaySchema,
-  thursday: operatingDaySchema,
-  friday: operatingDaySchema,
-  saturday: operatingDaySchema,
-  sunday: operatingDaySchema,
-}) satisfies z.ZodType<OperatingHours>;
+const operatingHoursShape = Object.fromEntries(
+  weekDays.map((day) => [day, operatingDaySchema])
+) as Record<(typeof weekDays)[number], typeof operatingDaySchema>;
+
+const operatingHoursSchema = z.strictObject(
+  operatingHoursShape
+) satisfies z.ZodType<OperatingHours>;
 
 export const updateTenantProfileSchema = z
   .object({

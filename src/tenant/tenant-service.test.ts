@@ -5,7 +5,8 @@ import type { OperatingHours } from '../contracts/tenant.js';
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
-const { defaultOperatingHours } = await import('../contracts/tenant.js');
+const { defaultOperatingHours, defaultTenantTimezone } =
+  await import('../contracts/tenant.js');
 const { insertTenant, resetTenantTestData } =
   await import('../test/test-db.js');
 const { getTenantProfile, updateTenantProfile } =
@@ -23,7 +24,7 @@ const tenantProfile = (
   id: 'tenant-1',
   name: 'Main Tenant',
   phone: '+15550000000',
-  timezone: 'Europe/Istanbul',
+  timezone: defaultTenantTimezone,
   operatingHours: defaultOperatingHours,
   ...overrides,
 });
