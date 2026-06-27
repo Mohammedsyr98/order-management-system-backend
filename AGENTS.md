@@ -13,6 +13,16 @@ This is an Express + TypeScript backend for an order management system.
 - Put business rules in services or modules with small public interfaces.
 - Do not add broad abstractions unless they clearly simplify the current work.
 
+## Test Organization
+
+- Put module-owned tests in `src/<module>/test/`.
+- Keep shared cross-module test infrastructure in `src/test/`.
+- Name large test files by behavior and public interface, such as `<module>-<behavior>-service.test.ts` or `<module>-<behavior>-routes.test.ts`.
+- Keep small modules in simple interface-level test files until behavior splitting improves readability.
+- Put reused module-specific test fixtures, builders, and assertions under `src/<module>/test/`; use a small `test-support.ts` or a more specific helper name when that reads better.
+- Export only test-support values that are actually reused; prefer constants for stable contexts and builder functions for customizable request bodies.
+- Do not split production source just because tests were split. Split source only when a behavior area earns its own meaningful module interface.
+
 ## Skill Workflow
 
 - Use `grill-me` when a feature or design needs clarification before implementation.
