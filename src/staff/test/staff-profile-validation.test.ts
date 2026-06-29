@@ -1,20 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-const { parseUpdateCourierProfileRequest, parseUpdateManagerProfileRequest } =
-  await import('../staff-validation.js');
+import { parseStaffProfileUpdate } from '../staff-validation.js';
 
 const expectInvalidCourierProfile = (value: unknown) => {
-  expect(parseUpdateCourierProfileRequest(value).success).toBe(false);
+  expect(parseStaffProfileUpdate('courier', value).success).toBe(false);
 };
 
 const expectInvalidManagerProfile = (value: unknown) => {
-  expect(parseUpdateManagerProfileRequest(value).success).toBe(false);
+  expect(parseStaffProfileUpdate('manager', value).success).toBe(false);
 };
 
-describe('parseUpdateCourierProfileRequest', () => {
+describe('parseStaffProfileUpdate', () => {
   it('accepts and normalizes courier profile fields', () => {
     expect(
-      parseUpdateCourierProfileRequest({
+      parseStaffProfileUpdate('courier', {
         name: ' Updated Courier ',
         phone: ' +15557654321 ',
       })
@@ -53,12 +52,9 @@ describe('parseUpdateCourierProfileRequest', () => {
       ...update,
     });
   });
-});
-
-describe('parseUpdateManagerProfileRequest', () => {
   it('accepts and normalizes manager profile fields', () => {
     expect(
-      parseUpdateManagerProfileRequest({
+      parseStaffProfileUpdate('manager', {
         name: ' Updated Manager ',
         phone: ' +15551234567 ',
       })
@@ -72,14 +68,14 @@ describe('parseUpdateManagerProfileRequest', () => {
   });
 
   it('normalizes cleared manager phone values to null', () => {
-    expect(parseUpdateManagerProfileRequest({ phone: '' })).toMatchObject({
+    expect(parseStaffProfileUpdate('manager', { phone: '' })).toMatchObject({
       success: true,
       data: {
         phone: null,
       },
     });
 
-    expect(parseUpdateManagerProfileRequest({ phone: '   ' })).toMatchObject({
+    expect(parseStaffProfileUpdate('manager', { phone: '   ' })).toMatchObject({
       success: true,
       data: {
         phone: null,
