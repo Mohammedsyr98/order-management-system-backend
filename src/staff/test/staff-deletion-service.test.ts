@@ -3,20 +3,22 @@ import 'dotenv/config';
 import { eq } from 'drizzle-orm';
 
 if (!process.env.DATABASE_URL_TEST) {
-  throw new Error('DATABASE_URL_TEST is required for staff-service.test.ts');
+  throw new Error(
+    'DATABASE_URL_TEST is required for staff-deletion-service.test.ts'
+  );
 }
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
-const { db } = await import('../db/index.js');
-const { tenantUsers, user: authUsers } = await import('../db/schema.js');
+const { db } = await import('../../db/index.js');
+const { tenantUsers, user: authUsers } = await import('../../db/schema.js');
 const {
   insertTenant,
   insertTenantMembership,
   insertUser,
   resetTenantTestData,
-} = await import('../test/test-db.js');
-const { deleteCourier, deleteManager } = await import('./staff-service.js');
+} = await import('../../test/test-db.js');
+const { deleteCourier, deleteManager } = await import('../staff-service.js');
 
 const getPersistedAuthUser = async (id = 'staff-1') => {
   const [persistedUser] = await db
