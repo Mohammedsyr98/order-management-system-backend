@@ -31,6 +31,15 @@ This is an Express + TypeScript backend for an order management system.
 - Use `triage` when classifying, refining, or preparing issues for work.
 - Use `tdd` when implementing issues or fixes test-first.
 
+## Planning Workflow
+
+- For planning requests, keep the first pass lean and decision-focused unless implementation is requested.
+- Start from the smallest evidence set that can produce a reliable plan: current worktree state, the relevant issue/spec, and targeted code searches.
+- Prefer targeted `rg` scans over full-file reads. Read full files only when exact behavior, APIs, or assertions are needed for the plan.
+- When fetching GitHub issues, request or summarize only planning-relevant fields: title, state, labels, body, blockers, and comments when needed.
+- Do not expand into implementation-level investigation unless the user asks to implement, the plan depends on exact code details, or there is a real ambiguity to resolve.
+- A good plan should name the intended files, behavioral scope, likely risks, and verification commands without dumping large source or issue payloads.
+
 ## GitHub Safety Rules
 
 - Never push to GitHub unless the user explicitly says to push.
