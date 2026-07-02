@@ -13,7 +13,7 @@ type RouteAuthContext = {
 
 if (!process.env.DATABASE_URL_TEST) {
   throw new Error(
-    'DATABASE_URL_TEST is required for staff-courier-routes.test.ts'
+    'DATABASE_URL_TEST is required for staff-courier-route-behavior.test.ts'
   );
 }
 
@@ -29,7 +29,7 @@ const routeAuth = vi.hoisted<{
   },
 }));
 
-vi.mock('../auth/auth-context.js', () => ({
+vi.mock('../../auth/auth-context.js', () => ({
   requireAuthContext: vi.fn((_req, res, next) => {
     if (routeAuth.context === null) {
       res.status(401).json({
@@ -140,10 +140,10 @@ const {
   insertTenantMembership,
   insertUser,
   resetTenantTestData,
-} = await import('../test/test-db.js');
-const { db } = await import('../db/index.js');
-const { tenantUsers, user: authUsers } = await import('../db/schema.js');
-const { staffRouter } = await import('./staff-routes.js');
+} = await import('../../test/test-db.js');
+const { db } = await import('../../db/index.js');
+const { tenantUsers, user: authUsers } = await import('../../db/schema.js');
+const { staffRouter } = await import('../staff-routes.js');
 
 const createApp = () => {
   const app = express();
