@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   defaultOperatingHours,
   defaultTenantTimezone,
-} from '../contracts/tenant.js';
+} from '../../contracts/tenant.js';
 
 const routeAuth = vi.hoisted(() => ({
   context: {
@@ -15,7 +15,7 @@ const routeAuth = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../auth/auth-context.js', () => ({
+vi.mock('../../auth/auth-context.js', () => ({
   requireAuthContext: vi.fn((_req, res, next) => {
     if (!routeAuth.context) {
       res.status(401).json({
@@ -57,14 +57,14 @@ vi.mock('../auth/auth-context.js', () => ({
   }),
 }));
 
-vi.mock('./tenant-service.js', () => ({
+vi.mock('../tenant-service.js', () => ({
   getTenantProfile: vi.fn(),
   updateTenantProfile: vi.fn(),
 }));
 
 const { getTenantProfile, updateTenantProfile } =
-  await import('./tenant-service.js');
-const { tenantRouter } = await import('./tenant-routes.js');
+  await import('../tenant-service.js');
+const { tenantRouter } = await import('../tenant-routes.js');
 
 const getTenantProfileMock = vi.mocked(getTenantProfile);
 const updateTenantProfileMock = vi.mocked(updateTenantProfile);
