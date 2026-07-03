@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import 'dotenv/config';
 
-import type { OperatingHours } from '../contracts/tenant.js';
+import type { OperatingHours } from '../../contracts/tenant.js';
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const { defaultOperatingHours, defaultTenantTimezone } =
-  await import('../contracts/tenant.js');
+  await import('../../contracts/tenant.js');
 const { insertTenant, resetTenantTestData } =
-  await import('../test/test-db.js');
+  await import('../../test/test-db.js');
 const { getTenantProfile, updateTenantProfile } =
-  await import('./tenant-service.js');
+  await import('../tenant-service.js');
 
 const tenantProfile = (
   overrides: Partial<{
