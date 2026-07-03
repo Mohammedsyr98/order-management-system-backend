@@ -2,7 +2,7 @@ import type { Request } from 'express';
 import { APIError } from 'better-auth';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../auth/auth.js', () => ({
+vi.mock('../../auth/auth.js', () => ({
   auth: {
     api: {
       signInEmail: vi.fn(),
@@ -12,16 +12,16 @@ vi.mock('../auth/auth.js', () => ({
   },
 }));
 
-vi.mock('../db/index.ts', () => ({
+vi.mock('../../db/index.ts', () => ({
   db: {
     select: vi.fn(),
   },
 }));
 
-const { auth } = await import('../auth/auth.js');
-const { db } = await import('../db/index.js');
+const { auth } = await import('../../auth/auth.js');
+const { db } = await import('../../db/index.js');
 const { getCurrentSession, loginSession, logoutSession } =
-  await import('./session-service.js');
+  await import('../session-service.js');
 
 const signInEmail = vi.mocked(auth.api.signInEmail);
 const signOut = vi.mocked(auth.api.signOut);
