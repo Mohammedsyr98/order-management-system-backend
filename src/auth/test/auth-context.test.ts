@@ -2,15 +2,15 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AppSessionResolution } from '../session/session-types.js';
+import type { AppSessionResolution } from '../../session/session-types.js';
 
-vi.mock('../session/session-service.js', () => ({
+vi.mock('../../session/session-service.js', () => ({
   resolveSession: vi.fn(),
 }));
 
-const { resolveSession } = await import('../session/session-service.js');
+const { resolveSession } = await import('../../session/session-service.js');
 const { requireAuthContext, requireManagerAccess } =
-  await import('./auth-context.js');
+  await import('../auth-context.js');
 
 const mockedResolveSession = vi.mocked(resolveSession);
 
