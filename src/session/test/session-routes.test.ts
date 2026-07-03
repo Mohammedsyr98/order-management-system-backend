@@ -5,17 +5,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   SessionCommandResult,
   SessionErrorCode,
-} from './session-types.js';
+} from '../session-types.js';
 
-vi.mock('./session-service.js', () => ({
+vi.mock('../session-service.js', () => ({
   loginSession: vi.fn(),
   getCurrentSession: vi.fn(),
   logoutSession: vi.fn(),
 }));
 
 const { loginSession, getCurrentSession, logoutSession } =
-  await import('./session-service.js');
-const { sessionRouter } = await import('./session-routes.js');
+  await import('../session-service.js');
+const { sessionRouter } = await import('../session-routes.js');
 
 const mockedLoginSession = vi.mocked(loginSession);
 const mockedGetCurrentSession = vi.mocked(getCurrentSession);
