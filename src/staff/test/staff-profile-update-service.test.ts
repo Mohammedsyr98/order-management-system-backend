@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 'dotenv/config';
-import { eq } from 'drizzle-orm';
 
 import type { ResolvedAuthContext } from '../../auth/auth-context.js';
 
@@ -12,14 +11,13 @@ if (!process.env.DATABASE_URL_TEST) {
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
-const { db } = await import('../../db/index.js');
-const { tenantUsers, user: authUsers } = await import('../../db/schema.js');
+const { insertTenant, resetTenantTestData } =
+  await import('../../test/test-db.js');
 const {
-  insertTenant,
-  insertTenantMembership,
-  insertUser,
-  resetTenantTestData,
-} = await import('../../test/test-db.js');
+  getPersistedAuthUser,
+  getPersistedMembership,
+  insertStaffMember,
+} = await import('./test-support.js');
 const { updateCourierProfile, updateManagerProfile, updateOwnStaffProfile } =
   await import('../staff-service.js');
 
@@ -35,35 +33,6 @@ const courierContext = {
   role: 'courier',
 } satisfies ResolvedAuthContext;
 
-const getPersistedAuthUser = async (id = 'staff-1') => {
-  const [persistedUser] = await db
-    .select({
-      id: authUsers.id,
-      name: authUsers.name,
-      email: authUsers.email,
-    })
-    .from(authUsers)
-    .where(eq(authUsers.id, id))
-    .limit(1);
-
-  return persistedUser ?? null;
-};
-
-const getPersistedMembership = async (userId = 'staff-1') => {
-  const [membership] = await db
-    .select({
-      tenantId: tenantUsers.tenantId,
-      userId: tenantUsers.userId,
-      role: tenantUsers.role,
-      phone: tenantUsers.phone,
-    })
-    .from(tenantUsers)
-    .where(eq(tenantUsers.userId, userId))
-    .limit(1);
-
-  return membership ?? null;
-};
-
 describe('updateCourierProfile', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -72,14 +41,10 @@ describe('updateCourierProfile', () => {
 
   it('updates a courier name and phone in the authenticated tenant', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-1',
       name: 'Original Courier',
       email: 'courier@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-1',
-      userId: 'courier-1',
       role: 'courier',
       phone: '+15550000000',
     });
@@ -117,14 +82,10 @@ describe('updateCourierProfile', () => {
 
   it('leaves an omitted courier name unchanged when replacing the phone', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-1',
       name: 'Original Courier',
       email: 'courier@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-1',
-      userId: 'courier-1',
       role: 'courier',
       phone: '+15550000000',
     });
@@ -157,15 +118,11 @@ describe('updateCourierProfile', () => {
     async (_label, userId, role, tenantId) => {
       await insertTenant();
       await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-      await insertUser({
+      await insertStaffMember({
         id: userId,
         name: 'Target User',
         email: `${userId}@example.com`,
-      });
-      await insertTenantMembership({
-        id: `tenant-user-${userId}`,
         tenantId,
-        userId,
         role,
         phone: '+15550000000',
       });
@@ -201,14 +158,10 @@ describe('updateManagerProfile', () => {
 
   it('updates a manager name and phone in the authenticated tenant', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-1',
       name: 'Original Manager',
       email: 'manager@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-1',
-      userId: 'manager-1',
       role: 'manager',
       phone: '+15550000000',
     });
@@ -246,14 +199,10 @@ describe('updateManagerProfile', () => {
 
   it('leaves omitted manager profile fields unchanged', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-1',
       name: 'Original Manager',
       email: 'manager@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-1',
-      userId: 'manager-1',
       role: 'manager',
       phone: '+15550000000',
     });
@@ -291,15 +240,11 @@ describe('updateManagerProfile', () => {
     async (_label, userId, role, tenantId) => {
       await insertTenant();
       await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-      await insertUser({
+      await insertStaffMember({
         id: userId,
         name: 'Target User',
         email: `${userId}@example.com`,
-      });
-      await insertTenantMembership({
-        id: `tenant-user-${userId}`,
         tenantId,
-        userId,
         role,
         phone: '+15550000000',
       });
@@ -335,14 +280,10 @@ describe('updateOwnStaffProfile', () => {
 
   it('updates the authenticated manager and returns a role-neutral staff profile', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-1',
       name: 'Original Manager',
       email: 'manager@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-1',
-      userId: 'manager-1',
       role: 'manager',
       phone: '+15550000000',
     });
@@ -369,14 +310,10 @@ describe('updateOwnStaffProfile', () => {
 
   it('updates the authenticated courier and returns a role-neutral staff profile', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-1',
       name: 'Original Courier',
       email: 'courier@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-1',
-      userId: 'courier-1',
       role: 'courier',
       phone: '+15550000000',
     });
@@ -414,25 +351,17 @@ describe('updateOwnStaffProfile', () => {
 
   it('rejects caller-supplied target IDs without updating either courier', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-1',
       name: 'Authenticated Courier',
       email: 'courier-1@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-1',
-      userId: 'courier-1',
       role: 'courier',
       phone: '+15550000001',
     });
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-2',
       name: 'Other Courier',
       email: 'courier-2@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-2',
-      userId: 'courier-2',
       role: 'courier',
       phone: '+15550000002',
     });
@@ -460,24 +389,16 @@ describe('updateOwnStaffProfile', () => {
 
   it('rejects caller-supplied target IDs without updating either manager', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-1',
       name: 'Authenticated Manager',
       email: 'manager-1@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-1',
-      userId: 'manager-1',
       role: 'manager',
     });
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-2',
       name: 'Other Manager',
       email: 'manager-2@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-2',
-      userId: 'manager-2',
       role: 'manager',
     });
 

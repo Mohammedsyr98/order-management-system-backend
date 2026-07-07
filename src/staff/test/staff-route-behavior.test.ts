@@ -10,16 +10,10 @@ import type {
   UpdateManagerProfileResponse,
   UpdateStaffProfileResponse,
 } from '../../contracts/staff.js';
-import { TenantRole } from '../../contracts/roles.js';
-
-type RouteAuthContext = {
-  userId: string;
-  tenantId: string;
-  role: TenantRole;
-};
+import type { ResolvedAuthContext } from '../../auth/auth-context.js';
 
 const routeAuth = vi.hoisted<{
-  context: RouteAuthContext | null | 'missing-membership';
+  context: ResolvedAuthContext | null | 'missing-membership';
 }>(() => ({
   context: {
     userId: 'owner-1',
@@ -55,7 +49,7 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireOwnerAccess: vi.fn((_req, res, next) => {
-    const context = res.locals.authContext as RouteAuthContext | undefined;
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
       res.status(401).json({
@@ -80,7 +74,7 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireManagerAccess: vi.fn((_req, res, next) => {
-    const context = res.locals.authContext as RouteAuthContext | undefined;
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
       res.status(401).json({
@@ -105,9 +99,11 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireTenantRole: vi.fn(
-    (allowedRoles: RouteAuthContext['role'][]) =>
+    (allowedRoles: ResolvedAuthContext['role'][]) =>
       (_req: Request, res: Response, next: NextFunction) => {
-        const context = res.locals.authContext as RouteAuthContext | undefined;
+        const context = res.locals.authContext as
+          | ResolvedAuthContext
+          | undefined;
 
         if (!context) {
           res.status(401).json({

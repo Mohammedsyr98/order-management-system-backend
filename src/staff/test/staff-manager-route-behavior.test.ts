@@ -4,11 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type RouteAuthContext = {
-  userId: string;
-  tenantId: string;
-  role: 'owner' | 'manager' | 'courier';
-};
+import type { ResolvedAuthContext } from '../../auth/auth-context.js';
 
 if (!process.env.DATABASE_URL_TEST) {
   throw new Error(
@@ -19,7 +15,7 @@ if (!process.env.DATABASE_URL_TEST) {
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const routeAuth = vi.hoisted<{
-  context: RouteAuthContext | null | 'missing-membership';
+  context: ResolvedAuthContext | null | 'missing-membership';
 }>(() => ({
   context: {
     userId: 'owner-1',
@@ -55,7 +51,7 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireOwnerAccess: vi.fn((_req, res, next) => {
-    const context = res.locals.authContext as RouteAuthContext | undefined;
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
       res.status(401).json({
@@ -80,7 +76,7 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireManagerAccess: vi.fn((_req, res, next) => {
-    const context = res.locals.authContext as RouteAuthContext | undefined;
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
       res.status(401).json({
@@ -105,9 +101,11 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireTenantRole: vi.fn(
-    (allowedRoles: RouteAuthContext['role'][]) =>
+    (allowedRoles: ResolvedAuthContext['role'][]) =>
       (_req: Request, res: Response, next: NextFunction) => {
-        const context = res.locals.authContext as RouteAuthContext | undefined;
+        const context = res.locals.authContext as
+          | ResolvedAuthContext
+          | undefined;
 
         if (!context) {
           res.status(401).json({
@@ -134,12 +132,9 @@ vi.mock('../../auth/auth-context.js', () => ({
   ),
 }));
 
-const {
-  insertTenant,
-  insertTenantMembership,
-  insertUser,
-  resetTenantTestData,
-} = await import('../../test/test-db.js');
+const { insertTenant, resetTenantTestData } =
+  await import('../../test/test-db.js');
+const { insertStaffMember } = await import('./test-support.js');
 const { staffRouter } = await import('../staff-routes.js');
 
 const createApp = () => {
@@ -152,48 +147,32 @@ const createApp = () => {
 const seedManagerListingData = async () => {
   await insertTenant();
   await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-  await insertUser({
+  await insertStaffMember({
     id: 'manager-2',
     name: 'Beta Manager',
     email: 'beta@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-manager-2',
-    userId: 'manager-2',
     role: 'manager',
     phone: null,
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'manager-1',
     name: 'Alpha Manager',
     email: 'alpha@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-manager-1',
-    userId: 'manager-1',
     role: 'manager',
     phone: '+15551234567',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'courier-1',
     name: 'Courier User',
     email: 'courier@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-courier-1',
-    userId: 'courier-1',
     role: 'courier',
     phone: '+15557654321',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'other-tenant-manager-1',
     name: 'Other Tenant Manager',
     email: 'other@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-other-manager-1',
     tenantId: 'tenant-2',
-    userId: 'other-tenant-manager-1',
     role: 'manager',
     phone: '+15550000002',
   });
@@ -202,48 +181,32 @@ const seedManagerListingData = async () => {
 const seedManagerProfileData = async () => {
   await insertTenant();
   await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-  await insertUser({
+  await insertStaffMember({
     id: 'manager-1',
     name: 'Original Manager',
     email: 'manager@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-manager-1',
-    userId: 'manager-1',
     role: 'manager',
     phone: '+15550000000',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'courier-1',
     name: 'Courier User',
     email: 'courier@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-courier-1',
-    userId: 'courier-1',
     role: 'courier',
     phone: '+15557654321',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'owner-target-1',
     name: 'Owner Target',
     email: 'owner-target@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-owner-target-1',
-    userId: 'owner-target-1',
     role: 'owner',
     phone: '+15550000001',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'other-tenant-manager-1',
     name: 'Other Tenant Manager',
     email: 'other@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-other-manager-1',
     tenantId: 'tenant-2',
-    userId: 'other-tenant-manager-1',
     role: 'manager',
     phone: '+15550000002',
   });

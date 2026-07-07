@@ -1,15 +1,10 @@
 import 'dotenv/config';
-import { eq } from 'drizzle-orm';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type RouteAuthContext = {
-  userId: string;
-  tenantId: string;
-  role: 'owner' | 'manager' | 'courier';
-};
+import type { ResolvedAuthContext } from '../../auth/auth-context.js';
 
 if (!process.env.DATABASE_URL_TEST) {
   throw new Error(
@@ -20,7 +15,7 @@ if (!process.env.DATABASE_URL_TEST) {
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const routeAuth = vi.hoisted<{
-  context: RouteAuthContext | null | 'missing-membership';
+  context: ResolvedAuthContext | null | 'missing-membership';
 }>(() => ({
   context: {
     userId: 'owner-1',
@@ -56,7 +51,7 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireManagerAccess: vi.fn((_req, res, next) => {
-    const context = res.locals.authContext as RouteAuthContext | undefined;
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
       res.status(401).json({
@@ -81,7 +76,7 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireOwnerAccess: vi.fn((_req, res, next) => {
-    const context = res.locals.authContext as RouteAuthContext | undefined;
+    const context = res.locals.authContext as ResolvedAuthContext | undefined;
 
     if (!context) {
       res.status(401).json({
@@ -106,9 +101,11 @@ vi.mock('../../auth/auth-context.js', () => ({
     next();
   }),
   requireTenantRole: vi.fn(
-    (allowedRoles: RouteAuthContext['role'][]) =>
+    (allowedRoles: ResolvedAuthContext['role'][]) =>
       (_req: Request, res: Response, next: NextFunction) => {
-        const context = res.locals.authContext as RouteAuthContext | undefined;
+        const context = res.locals.authContext as
+          | ResolvedAuthContext
+          | undefined;
 
         if (!context) {
           res.status(401).json({
@@ -135,14 +132,13 @@ vi.mock('../../auth/auth-context.js', () => ({
   ),
 }));
 
+const { insertTenant, resetTenantTestData } =
+  await import('../../test/test-db.js');
 const {
-  insertTenant,
-  insertTenantMembership,
-  insertUser,
-  resetTenantTestData,
-} = await import('../../test/test-db.js');
-const { db } = await import('../../db/index.js');
-const { tenantUsers, user: authUsers } = await import('../../db/schema.js');
+  getPersistedAuthUser,
+  getPersistedMembership,
+  insertStaffMember,
+} = await import('./test-support.js');
 const { staffRouter } = await import('../staff-routes.js');
 
 const createApp = () => {
@@ -152,91 +148,42 @@ const createApp = () => {
   return app;
 };
 
-const getPersistedAuthUser = async (id: string) => {
-  const [persistedUser] = await db
-    .select({
-      id: authUsers.id,
-      name: authUsers.name,
-      email: authUsers.email,
-    })
-    .from(authUsers)
-    .where(eq(authUsers.id, id))
-    .limit(1);
-
-  return persistedUser ?? null;
-};
-
-const getPersistedMembership = async (userId: string) => {
-  const [membership] = await db
-    .select({
-      tenantId: tenantUsers.tenantId,
-      userId: tenantUsers.userId,
-      role: tenantUsers.role,
-      phone: tenantUsers.phone,
-    })
-    .from(tenantUsers)
-    .where(eq(tenantUsers.userId, userId))
-    .limit(1);
-
-  return membership ?? null;
-};
-
 const seedCourierListingData = async () => {
   await insertTenant();
   await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-  await insertUser({
+  await insertStaffMember({
     id: 'courier-2',
     name: 'Beta Courier',
     email: 'beta@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-courier-2',
-    userId: 'courier-2',
     role: 'courier',
     phone: null,
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'courier-1',
     name: 'Alpha Courier',
     email: 'alpha@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-courier-1',
-    userId: 'courier-1',
     role: 'courier',
     phone: '+15557654321',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'manager-1',
     name: 'Manager User',
     email: 'manager@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-manager-1',
-    userId: 'manager-1',
     role: 'manager',
     phone: '+15551234567',
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'owner-2',
     name: 'Tenant Owner',
     email: 'owner@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-owner-2',
-    userId: 'owner-2',
     role: 'owner',
     phone: null,
   });
-  await insertUser({
+  await insertStaffMember({
     id: 'other-tenant-courier-1',
     name: 'Other Tenant Courier',
     email: 'other@example.com',
-  });
-  await insertTenantMembership({
-    id: 'tenant-user-other-courier-1',
     tenantId: 'tenant-2',
-    userId: 'other-tenant-courier-1',
     role: 'courier',
     phone: '+15550000002',
   });
