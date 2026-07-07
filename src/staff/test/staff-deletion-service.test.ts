@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 'dotenv/config';
-import { eq } from 'drizzle-orm';
 
 if (!process.env.DATABASE_URL_TEST) {
   throw new Error(
@@ -10,44 +9,14 @@ if (!process.env.DATABASE_URL_TEST) {
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
-const { db } = await import('../../db/index.js');
-const { tenantUsers, user: authUsers } = await import('../../db/schema.js');
+const { insertTenant, resetTenantTestData } =
+  await import('../../test/test-db.js');
 const {
-  insertTenant,
-  insertTenantMembership,
-  insertUser,
-  resetTenantTestData,
-} = await import('../../test/test-db.js');
+  getPersistedAuthUser,
+  getPersistedMembership,
+  insertStaffMember,
+} = await import('./test-support.js');
 const { deleteCourier, deleteManager } = await import('../staff-service.js');
-
-const getPersistedAuthUser = async (id = 'staff-1') => {
-  const [persistedUser] = await db
-    .select({
-      id: authUsers.id,
-      name: authUsers.name,
-      email: authUsers.email,
-    })
-    .from(authUsers)
-    .where(eq(authUsers.id, id))
-    .limit(1);
-
-  return persistedUser ?? null;
-};
-
-const getPersistedMembership = async (userId = 'staff-1') => {
-  const [membership] = await db
-    .select({
-      tenantId: tenantUsers.tenantId,
-      userId: tenantUsers.userId,
-      role: tenantUsers.role,
-      phone: tenantUsers.phone,
-    })
-    .from(tenantUsers)
-    .where(eq(tenantUsers.userId, userId))
-    .limit(1);
-
-  return membership ?? null;
-};
 
 describe('deleteManager', () => {
   beforeEach(async () => {
@@ -57,14 +26,10 @@ describe('deleteManager', () => {
 
   it('deletes a manager auth user and cascades their tenant membership', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-1',
       name: 'Manager User',
       email: 'manager@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-1',
-      userId: 'manager-1',
       role: 'manager',
     });
 
@@ -84,15 +49,11 @@ describe('deleteManager', () => {
     async (_label, userId, role, tenantId) => {
       await insertTenant();
       await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-      await insertUser({
+      await insertStaffMember({
         id: userId,
         name: 'Target User',
         email: `${userId}@example.com`,
-      });
-      await insertTenantMembership({
-        id: `tenant-user-${userId}`,
         tenantId,
-        userId,
         role,
       });
 
@@ -123,14 +84,10 @@ describe('deleteCourier', () => {
 
   it('deletes a courier auth user and cascades their tenant membership', async () => {
     await insertTenant();
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-1',
       name: 'Courier User',
       email: 'courier@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-1',
-      userId: 'courier-1',
       role: 'courier',
     });
 
@@ -150,15 +107,11 @@ describe('deleteCourier', () => {
     async (_label, userId, role, tenantId) => {
       await insertTenant();
       await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-      await insertUser({
+      await insertStaffMember({
         id: userId,
         name: 'Target User',
         email: `${userId}@example.com`,
-      });
-      await insertTenantMembership({
-        id: `tenant-user-${userId}`,
         tenantId,
-        userId,
         role,
       });
 
