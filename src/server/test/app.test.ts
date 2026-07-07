@@ -11,7 +11,7 @@ describe('auth routes', () => {
     process.env.DATABASE_URL =
       'postgresql://user:password@localhost:5432/order_management_test';
 
-    ({ app } = await import('./app.js'));
+    ({ app } = await import('../app.js'));
   });
 
   it('mounts the Better Auth health route', async () => {

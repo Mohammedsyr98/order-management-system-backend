@@ -9,12 +9,13 @@ import type {
   UpdateCourierProfileResponse,
   UpdateManagerProfileResponse,
   UpdateStaffProfileResponse,
-} from '../contracts/staff.js';
+} from '../../contracts/staff.js';
+import { TenantRole } from '../../contracts/roles.js';
 
 type RouteAuthContext = {
   userId: string;
   tenantId: string;
-  role: 'owner' | 'manager' | 'courier';
+  role: TenantRole;
 };
 
 const routeAuth = vi.hoisted<{
@@ -27,7 +28,7 @@ const routeAuth = vi.hoisted<{
   },
 }));
 
-vi.mock('../auth/auth-context.js', () => ({
+vi.mock('../../auth/auth-context.js', () => ({
   requireAuthContext: vi.fn((_req, res, next) => {
     if (routeAuth.context === null) {
       res.status(401).json({
@@ -133,7 +134,7 @@ vi.mock('../auth/auth-context.js', () => ({
   ),
 }));
 
-vi.mock('./staff-service.js', () => ({
+vi.mock('../staff-service.js', () => ({
   createStaff: vi.fn(),
   deleteCourier: vi.fn(),
   deleteManager: vi.fn(),
@@ -153,8 +154,8 @@ const {
   updateCourierProfile,
   updateManagerProfile,
   updateOwnStaffProfile,
-} = await import('./staff-service.js');
-const { staffRouter } = await import('./staff-routes.js');
+} = await import('../staff-service.js');
+const { staffRouter } = await import('../staff-routes.js');
 
 const createStaffMock = vi.mocked(createStaff);
 const deleteCourierMock = vi.mocked(deleteCourier);

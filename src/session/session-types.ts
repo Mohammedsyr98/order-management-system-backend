@@ -1,16 +1,9 @@
+import type { ApiErrorCode } from '../contracts/api.js';
 import type { TenantRole } from '../contracts/roles.js';
-import type { auth } from '../auth/auth.js';
-
-export type LoginRequestBody = {
-  email?: unknown;
-  password?: unknown;
-};
-
-export type AppSessionUser = {
-  id: string;
-  name: string;
-  email: string;
-};
+import type {
+  AppSessionResponse,
+  AppSessionUser,
+} from '../contracts/session.js';
 
 export type AppSessionContext = {
   tenantId: string;
@@ -18,7 +11,30 @@ export type AppSessionContext = {
   role: TenantRole;
 };
 
-export type SignInEmailResultWithHeaders = {
-  headers: Headers;
-  response: Awaited<ReturnType<typeof auth.api.signInEmail>>;
-};
+export type AppSessionResolution =
+  | {
+      user: AppSessionUser;
+      context: AppSessionContext;
+    }
+  | null
+  | 'missing-membership';
+
+export type SessionErrorCode = Extract<
+  ApiErrorCode,
+  | 'INVALID_LOGIN_REQUEST'
+  | 'INVALID_CREDENTIALS'
+  | 'SESSION_CONTEXT_FAILED'
+  | 'UNAUTHENTICATED'
+  | 'TENANT_MEMBERSHIP_REQUIRED'
+>;
+
+export type SessionCommandResult =
+  | {
+      ok: true;
+      data: AppSessionResponse;
+      setCookieHeaders?: string[];
+    }
+  | {
+      ok: false;
+      errorCode: SessionErrorCode;
+    };

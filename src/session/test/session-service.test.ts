@@ -1,9 +1,8 @@
-import express from 'express';
+import type { Request } from 'express';
 import { APIError } from 'better-auth';
-import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../auth/auth.js', () => ({
+vi.mock('../../auth/auth.js', () => ({
   auth: {
     api: {
       signInEmail: vi.fn(),
@@ -13,27 +12,26 @@ vi.mock('../auth/auth.js', () => ({
   },
 }));
 
-vi.mock('../db/index.ts', () => ({
+vi.mock('../../db/index.ts', () => ({
   db: {
     select: vi.fn(),
   },
 }));
 
-const { auth } = await import('../auth/auth.js');
-const { db } = await import('../db/index.js');
-const { sessionRouter } = await import('./session-routes.js');
+const { auth } = await import('../../auth/auth.js');
+const { db } = await import('../../db/index.js');
+const { getCurrentSession, loginSession, logoutSession } =
+  await import('../session-service.js');
 
 const signInEmail = vi.mocked(auth.api.signInEmail);
 const signOut = vi.mocked(auth.api.signOut);
 const getSession = vi.mocked(auth.api.getSession);
 const select = vi.mocked(db.select);
 
-const createApp = () => {
-  const app = express();
-  app.use(express.json());
-  app.use('/api/session', sessionRouter);
-  return app;
-};
+const requestWithHeaders = (headers: Request['headers'] = {}) =>
+  ({
+    headers,
+  }) as Request;
 
 const mockCurrentSessionRows = (
   rows: Array<{
@@ -60,12 +58,12 @@ const mockSession = (userId: string) =>
     session: { userId },
   }) as Awaited<ReturnType<typeof auth.api.getSession>>;
 
-describe('session routes', () => {
+describe('session service', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  it('logs in with email and password and returns the current app session context', async () => {
+  it('logs in with email and password and returns the app session', async () => {
     const headers = new Headers();
     headers.append('set-cookie', 'better-auth.session_token=session-1; Path=/');
 
@@ -93,32 +91,29 @@ describe('session routes', () => {
       },
     ]);
 
-    const response = await request(createApp())
-      .post('/api/session/login')
-      .send({
-        email: ' Owner@Example.COM ',
-        password: 'password123',
-      });
+    const result = await loginSession(requestWithHeaders(), {
+      email: ' Owner@Example.COM ',
+      password: 'password123',
+    });
 
-    expect(response.status).toBe(200);
-    expect(response.headers['set-cookie']).toEqual([
-      'better-auth.session_token=session-1; Path=/',
-    ]);
-    expect(response.body).toEqual({
-      user: {
-        id: 'user-1',
-        name: 'Owner User',
-        email: 'owner@example.com',
-      },
-      tenant: {
-        id: 'tenant-1',
-        name: 'Main Tenant',
-      },
-      membership: {
-        role: 'owner',
+    expect(result).toEqual({
+      ok: true,
+      setCookieHeaders: ['better-auth.session_token=session-1; Path=/'],
+      data: {
+        user: {
+          id: 'user-1',
+          name: 'Owner User',
+          email: 'owner@example.com',
+        },
+        tenant: {
+          id: 'tenant-1',
+          name: 'Main Tenant',
+        },
+        membership: {
+          role: 'owner',
+        },
       },
     });
-    expect(response.body.token).toBeUndefined();
     expect(signInEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         body: {
@@ -130,20 +125,25 @@ describe('session routes', () => {
     );
   });
 
-  it('rejects invalid login request bodies', async () => {
-    const response = await request(createApp())
-      .post('/api/session/login')
-      .send({
-        email: '',
-        password: '',
-      });
+  it('rejects invalid login request bodies without calling Better Auth', async () => {
+    const result = await loginSession(requestWithHeaders(), {
+      email: '',
+      password: '',
+    });
 
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: {
-        code: 'INVALID_LOGIN_REQUEST',
-        message: 'Email and password are required.',
-      },
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'INVALID_LOGIN_REQUEST',
+    });
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing login request bodies without calling Better Auth', async () => {
+    const result = await loginSession(requestWithHeaders(), undefined);
+
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'INVALID_LOGIN_REQUEST',
     });
     expect(signInEmail).not.toHaveBeenCalled();
   });
@@ -156,15 +156,15 @@ describe('session routes', () => {
       })
     );
 
-    const response = await request(createApp())
-      .post('/api/session/login')
-      .send({
-        email: 'not-an-email',
-        password: 'password123',
-      });
+    const result = await loginSession(requestWithHeaders(), {
+      email: 'not-an-email',
+      password: 'password123',
+    });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('INVALID_LOGIN_REQUEST');
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'INVALID_LOGIN_REQUEST',
+    });
   });
 
   it('maps invalid credentials to a neutral login error', async () => {
@@ -175,24 +175,19 @@ describe('session routes', () => {
       })
     );
 
-    const response = await request(createApp())
-      .post('/api/session/login')
-      .send({
-        email: 'owner@example.com',
-        password: 'wrong-password',
-      });
+    const result = await loginSession(requestWithHeaders(), {
+      email: 'owner@example.com',
+      password: 'wrong-password',
+    });
 
-    expect(response.status).toBe(401);
-    expect(response.body).toEqual({
-      error: {
-        code: 'INVALID_CREDENTIALS',
-        message: 'Email or password is incorrect.',
-      },
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'INVALID_CREDENTIALS',
     });
     expect(select).not.toHaveBeenCalled();
   });
 
-  it('rejects login when the authenticated user has no tenant membership', async () => {
+  it('cleans up login sessions when the authenticated user has no tenant membership', async () => {
     signInEmail.mockResolvedValue({
       headers: new Headers(),
       response: {
@@ -212,25 +207,19 @@ describe('session routes', () => {
     signOut.mockResolvedValue({ success: true });
     mockCurrentSessionRows([]);
 
-    const response = await request(createApp())
-      .post('/api/session/login')
-      .send({
-        email: 'tenantless@example.com',
-        password: 'password123',
-      });
+    const result = await loginSession(requestWithHeaders(), {
+      email: 'tenantless@example.com',
+      password: 'password123',
+    });
 
-    expect(response.status).toBe(403);
-    expect(response.body).toEqual({
-      error: {
-        code: 'TENANT_MEMBERSHIP_REQUIRED',
-        message:
-          'Your account is not linked to a tenant. Contact support for help.',
-      },
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'TENANT_MEMBERSHIP_REQUIRED',
     });
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 
-  it('cleans up and reports a session context failure when tenant lookup fails after login', async () => {
+  it('cleans up and reports a context failure when tenant lookup fails after login', async () => {
     signInEmail.mockResolvedValue({
       headers: new Headers(),
       response: {
@@ -254,19 +243,14 @@ describe('session routes', () => {
     const from = vi.fn().mockReturnValue({ innerJoin });
     select.mockReturnValue({ from } as unknown as ReturnType<typeof db.select>);
 
-    const response = await request(createApp())
-      .post('/api/session/login')
-      .send({
-        email: 'owner@example.com',
-        password: 'password123',
-      });
+    const result = await loginSession(requestWithHeaders(), {
+      email: 'owner@example.com',
+      password: 'password123',
+    });
 
-    expect(response.status).toBe(500);
-    expect(response.body).toEqual({
-      error: {
-        code: 'SESSION_CONTEXT_FAILED',
-        message: 'Session context could not be resolved.',
-      },
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'SESSION_CONTEXT_FAILED',
     });
     expect(signOut).toHaveBeenCalledTimes(1);
   });
@@ -274,19 +258,16 @@ describe('session routes', () => {
   it('rejects current session requests without a valid session', async () => {
     getSession.mockResolvedValue(null);
 
-    const response = await request(createApp()).get('/api/session/current');
+    const result = await getCurrentSession(requestWithHeaders());
 
-    expect(response.status).toBe(401);
-    expect(response.body).toEqual({
-      error: {
-        code: 'UNAUTHENTICATED',
-        message: 'You must sign in to perform this action.',
-      },
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'UNAUTHENTICATED',
     });
     expect(select).not.toHaveBeenCalled();
   });
 
-  it('returns the current app session context for a valid session', async () => {
+  it('returns the current app session for a valid session', async () => {
     getSession.mockResolvedValue(mockSession('user-1'));
     mockCurrentSessionRows([
       {
@@ -296,21 +277,23 @@ describe('session routes', () => {
       },
     ]);
 
-    const response = await request(createApp()).get('/api/session/current');
+    const result = await getCurrentSession(requestWithHeaders());
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      user: {
-        id: 'user-1',
-        name: 'Owner User',
-        email: 'owner@example.com',
-      },
-      tenant: {
-        id: 'tenant-1',
-        name: 'Main Tenant',
-      },
-      membership: {
-        role: 'manager',
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        user: {
+          id: 'user-1',
+          name: 'Owner User',
+          email: 'owner@example.com',
+        },
+        tenant: {
+          id: 'tenant-1',
+          name: 'Main Tenant',
+        },
+        membership: {
+          role: 'manager',
+        },
       },
     });
   });
@@ -319,19 +302,19 @@ describe('session routes', () => {
     getSession.mockResolvedValue(mockSession('tenantless-user'));
     mockCurrentSessionRows([]);
 
-    const response = await request(createApp()).get('/api/session/current');
+    const result = await getCurrentSession(requestWithHeaders());
 
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe('TENANT_MEMBERSHIP_REQUIRED');
+    expect(result).toEqual({
+      ok: false,
+      errorCode: 'TENANT_MEMBERSHIP_REQUIRED',
+    });
   });
 
   it('logs out idempotently', async () => {
     signOut.mockRejectedValue(new Error('missing session'));
 
-    const response = await request(createApp()).post('/api/session/logout');
+    await expect(logoutSession(requestWithHeaders())).resolves.toBeUndefined();
 
-    expect(response.status).toBe(204);
-    expect(response.body).toEqual({});
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 });

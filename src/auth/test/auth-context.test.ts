@@ -2,27 +2,37 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./auth.js', () => ({
-  auth: {
-    api: {
-      getSession: vi.fn(),
-    },
-  },
+import type { AppSessionResolution } from '../../session/session-types.js';
+
+vi.mock('../../session/session-service.js', () => ({
+  resolveSession: vi.fn(),
 }));
 
-vi.mock('../db/index.ts', () => ({
-  db: {
-    select: vi.fn(),
-  },
-}));
-
-const { auth } = await import('./auth.js');
-const { db } = await import('../db/index.js');
+const { resolveSession } = await import('../../session/session-service.js');
 const { requireAuthContext, requireManagerAccess } =
-  await import('./auth-context.js');
+  await import('../auth-context.js');
 
-const getSession = vi.mocked(auth.api.getSession);
-const select = vi.mocked(db.select);
+const mockedResolveSession = vi.mocked(resolveSession);
+
+const resolvedSession = (
+  overrides: Partial<{
+    userId: string;
+    tenantId: string;
+    role: 'owner' | 'manager' | 'courier';
+  }> = {}
+) =>
+  ({
+    user: {
+      id: overrides.userId ?? 'user-1',
+      name: 'Owner User',
+      email: 'owner@example.com',
+    },
+    context: {
+      tenantId: overrides.tenantId ?? 'tenant-1',
+      tenantName: 'Main Tenant',
+      role: overrides.role ?? 'manager',
+    },
+  }) satisfies Exclude<AppSessionResolution, null | 'missing-membership'>;
 
 const createProtectedApp = () => {
   const app = express();
@@ -45,29 +55,13 @@ const createManagerProtectedApp = () => {
   return app;
 };
 
-const mockSession = (userId: string) =>
-  ({
-    user: { id: userId },
-    session: { userId },
-  }) as Awaited<ReturnType<typeof auth.api.getSession>>;
-
-const mockMembershipRows = (
-  rows: Array<{ tenantId: string; role: 'owner' | 'manager' | 'courier' }>
-) => {
-  const limit = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
-
-  select.mockReturnValue({ from } as unknown as ReturnType<typeof db.select>);
-};
-
 describe('protected auth context', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('rejects unauthenticated protected requests', async () => {
-    getSession.mockResolvedValue(null);
+    mockedResolveSession.mockResolvedValue(null);
 
     const response = await request(createProtectedApp())
       .post('/protected')
@@ -83,8 +77,7 @@ describe('protected auth context', () => {
   });
 
   it('rejects authenticated users without tenant membership', async () => {
-    getSession.mockResolvedValue(mockSession('user-without-membership'));
-    mockMembershipRows([]);
+    mockedResolveSession.mockResolvedValue('missing-membership');
 
     const response = await request(createProtectedApp())
       .post('/protected')
@@ -101,8 +94,13 @@ describe('protected auth context', () => {
   });
 
   it('returns resolved user, tenant, and role context for tenant members', async () => {
-    getSession.mockResolvedValue(mockSession('user-1'));
-    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+    mockedResolveSession.mockResolvedValue(
+      resolvedSession({
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        role: 'manager',
+      })
+    );
 
     const response = await request(createProtectedApp())
       .post('/protected')
@@ -117,8 +115,9 @@ describe('protected auth context', () => {
   });
 
   it('ignores request-body tenant IDs when resolving tenant context', async () => {
-    getSession.mockResolvedValue(mockSession('user-1'));
-    mockMembershipRows([{ tenantId: 'trusted-tenant', role: 'owner' }]);
+    mockedResolveSession.mockResolvedValue(
+      resolvedSession({ tenantId: 'trusted-tenant', role: 'owner' })
+    );
 
     const response = await request(createProtectedApp())
       .post('/protected')
@@ -133,8 +132,9 @@ describe('protected auth context', () => {
   });
 
   it('allows owners to access manager operations', async () => {
-    getSession.mockResolvedValue(mockSession('owner-1'));
-    mockMembershipRows([{ tenantId: 'tenant-1', role: 'owner' }]);
+    mockedResolveSession.mockResolvedValue(
+      resolvedSession({ userId: 'owner-1', role: 'owner' })
+    );
 
     const response = await request(createManagerProtectedApp())
       .post('/manager')
@@ -145,8 +145,9 @@ describe('protected auth context', () => {
   });
 
   it('allows managers to access manager operations', async () => {
-    getSession.mockResolvedValue(mockSession('manager-1'));
-    mockMembershipRows([{ tenantId: 'tenant-1', role: 'manager' }]);
+    mockedResolveSession.mockResolvedValue(
+      resolvedSession({ userId: 'manager-1', role: 'manager' })
+    );
 
     const response = await request(createManagerProtectedApp())
       .post('/manager')
@@ -157,8 +158,9 @@ describe('protected auth context', () => {
   });
 
   it('rejects couriers from manager operations', async () => {
-    getSession.mockResolvedValue(mockSession('courier-1'));
-    mockMembershipRows([{ tenantId: 'tenant-1', role: 'courier' }]);
+    mockedResolveSession.mockResolvedValue(
+      resolvedSession({ userId: 'courier-1', role: 'courier' })
+    );
 
     const response = await request(createManagerProtectedApp())
       .post('/manager')

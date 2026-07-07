@@ -1,77 +1,35 @@
 import type { NextFunction, Request, Response } from 'express';
-import { eq } from 'drizzle-orm';
 
-import { auth } from './auth.js';
-import { db } from '../db/index.js';
-import { tenantUsers } from '../db/schema.js';
+import type { TenantRole } from '../contracts/roles.js';
 import { sendApiError } from '../http/api-errors.js';
+import { resolveSession } from '../session/session-service.js';
+
+export type { TenantRole };
 
 export type ResolvedAuthContext = {
   userId: string;
   tenantId: string;
-  role: 'owner' | 'manager' | 'courier';
+  role: TenantRole;
 };
-
-export type TenantRole = ResolvedAuthContext['role'];
 
 export type AuthContextResolution =
   | ResolvedAuthContext
   | null
   | 'missing-membership';
 
-type HeaderValue = string | string[] | undefined;
-
-const appendHeader = (headers: Headers, name: string, value: HeaderValue) => {
-  if (value === undefined) {
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      headers.append(name, item);
-    }
-    return;
-  }
-
-  headers.set(name, value);
-};
-
-const headersFromRequest = (req: Request) => {
-  const headers = new Headers();
-
-  for (const [name, value] of Object.entries(req.headers)) {
-    appendHeader(headers, name, value);
-  }
-
-  return headers;
-};
-
 export const resolveAuthContext = async (
-  headers: Headers
+  req: Request
 ): Promise<AuthContextResolution> => {
-  const session = await auth.api.getSession({ headers });
+  const session = await resolveSession(req);
 
-  if (!session) {
-    return null;
-  }
-
-  const [membership] = await db
-    .select({
-      tenantId: tenantUsers.tenantId,
-      role: tenantUsers.role,
-    })
-    .from(tenantUsers)
-    .where(eq(tenantUsers.userId, session.user.id))
-    .limit(1);
-
-  if (!membership) {
-    return 'missing-membership';
+  if (session === null || session === 'missing-membership') {
+    return session;
   }
 
   return {
     userId: session.user.id,
-    tenantId: membership.tenantId,
-    role: membership.role,
+    tenantId: session.context.tenantId,
+    role: session.context.role,
   };
 };
 
@@ -80,7 +38,7 @@ export const requireAuthContext = async (
   res: Response,
   next: NextFunction
 ) => {
-  const context = await resolveAuthContext(headersFromRequest(req));
+  const context = await resolveAuthContext(req);
 
   if (context === null) {
     sendApiError(res, 401, 'UNAUTHENTICATED');
