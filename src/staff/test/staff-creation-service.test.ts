@@ -1,7 +1,6 @@
 import { APIError } from 'better-auth';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 'dotenv/config';
-import { eq } from 'drizzle-orm';
 
 import type { ResolvedAuthContext } from '../../auth/auth-context.js';
 import type { CreateStaffRequest } from '../../contracts/staff.js';
@@ -24,9 +23,11 @@ vi.mock('../../auth/auth.js', () => ({
 
 const { auth } = await import('../../auth/auth.js');
 const { db } = await import('../../db/index.js');
-const { tenantUsers, user: authUsers } = await import('../../db/schema.js');
+const { user: authUsers } = await import('../../db/schema.js');
 const { insertTenant, resetTenantTestData } =
   await import('../../test/test-db.js');
+const { getPersistedAuthUser, getPersistedMembership } =
+  await import('./test-support.js');
 const { createStaff } = await import('../staff-service.js');
 
 const signUpEmail = vi.mocked(auth.api.signUpEmail);
@@ -89,35 +90,6 @@ const mockCreatedUser = (id = 'staff-1') => {
       token: null,
     } as Awaited<ReturnType<typeof auth.api.signUpEmail>>;
   });
-};
-
-const getPersistedAuthUser = async (id = 'staff-1') => {
-  const [persistedUser] = await db
-    .select({
-      id: authUsers.id,
-      name: authUsers.name,
-      email: authUsers.email,
-    })
-    .from(authUsers)
-    .where(eq(authUsers.id, id))
-    .limit(1);
-
-  return persistedUser ?? null;
-};
-
-const getPersistedMembership = async (userId = 'staff-1') => {
-  const [membership] = await db
-    .select({
-      tenantId: tenantUsers.tenantId,
-      userId: tenantUsers.userId,
-      role: tenantUsers.role,
-      phone: tenantUsers.phone,
-    })
-    .from(tenantUsers)
-    .where(eq(tenantUsers.userId, userId))
-    .limit(1);
-
-  return membership ?? null;
 };
 
 describe('createStaff', () => {

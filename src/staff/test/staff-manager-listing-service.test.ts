@@ -9,12 +9,9 @@ if (!process.env.DATABASE_URL_TEST) {
 
 process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
-const {
-  insertTenant,
-  insertTenantMembership,
-  insertUser,
-  resetTenantTestData,
-} = await import('../../test/test-db.js');
+const { insertTenant, resetTenantTestData } =
+  await import('../../test/test-db.js');
+const { insertStaffMember } = await import('./test-support.js');
 const { listManagers } = await import('../staff-service.js');
 
 describe('listManagers', () => {
@@ -25,48 +22,32 @@ describe('listManagers', () => {
   it('lists only managers in the authenticated tenant with identity and membership data', async () => {
     await insertTenant();
     await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-2',
       name: 'Beta Manager',
       email: 'beta@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-2',
-      userId: 'manager-2',
       role: 'manager',
       phone: null,
     });
-    await insertUser({
+    await insertStaffMember({
       id: 'manager-1',
       name: 'Alpha Manager',
       email: 'alpha@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-manager-1',
-      userId: 'manager-1',
       role: 'manager',
       phone: '+15551234567',
     });
-    await insertUser({
+    await insertStaffMember({
       id: 'courier-1',
       name: 'Courier User',
       email: 'courier@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-courier-1',
-      userId: 'courier-1',
       role: 'courier',
       phone: '+15557654321',
     });
-    await insertUser({
+    await insertStaffMember({
       id: 'other-tenant-manager-1',
       name: 'Other Tenant Manager',
       email: 'other@example.com',
-    });
-    await insertTenantMembership({
-      id: 'tenant-user-other-manager-1',
       tenantId: 'tenant-2',
-      userId: 'other-tenant-manager-1',
       role: 'manager',
       phone: '+15550000002',
     });
