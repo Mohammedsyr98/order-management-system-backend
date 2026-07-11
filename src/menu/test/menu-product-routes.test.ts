@@ -4,10 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ResolvedAuthContext } from '../../auth/auth-context.js';
-import type {
-  ListMenuCategoriesResponse,
-  MenuCategoryResponse,
-} from '../../contracts/menu.js';
+import type { FixedPriceProductResponse } from '../../contracts/menu.js';
 
 const routeAuth = vi.hoisted<{
   context: ResolvedAuthContext | null | 'missing-membership';
@@ -138,17 +135,15 @@ vi.mock('../menu-service.js', () => ({
 }));
 
 const {
-  createMenuCategory,
-  deleteMenuCategory,
-  listMenuCategories,
-  updateMenuCategory,
+  createFixedPriceProduct,
+  deleteFixedPriceProduct,
+  updateFixedPriceProduct,
 } = await import('../menu-service.js');
 const { menuRouter } = await import('../menu-routes.js');
 
-const createMenuCategoryMock = vi.mocked(createMenuCategory);
-const deleteMenuCategoryMock = vi.mocked(deleteMenuCategory);
-const listMenuCategoriesMock = vi.mocked(listMenuCategories);
-const updateMenuCategoryMock = vi.mocked(updateMenuCategory);
+const createFixedPriceProductMock = vi.mocked(createFixedPriceProduct);
+const deleteFixedPriceProductMock = vi.mocked(deleteFixedPriceProduct);
+const updateFixedPriceProductMock = vi.mocked(updateFixedPriceProduct);
 
 const createApp = () => {
   const app = express();
@@ -157,24 +152,20 @@ const createApp = () => {
   return app;
 };
 
-const listedCategories: ListMenuCategoriesResponse = {
-  categories: [
-    {
-      id: 'category-1',
-      tenantId: 'tenant-1',
-      name: 'Mains',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      products: [],
-    },
-  ],
+const productPayload: FixedPriceProductResponse = {
+  product: {
+    id: 'product-1',
+    categoryId: 'category-1',
+    name: 'Ayran',
+    description: null,
+    isAvailable: true,
+    price: '30.00',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
 };
 
-const categoryPayload: MenuCategoryResponse = {
-  category: listedCategories.categories[0],
-};
-
-type MenuMethod = 'get' | 'post' | 'put' | 'delete';
+type MenuMethod = 'post' | 'put' | 'delete';
 
 const sendMenuRequest = (
   method: MenuMethod,
@@ -183,18 +174,16 @@ const sendMenuRequest = (
 ) => {
   const appRequest = request(createApp());
   const pendingRequest =
-    method === 'get'
-      ? appRequest.get(path)
-      : method === 'post'
-        ? appRequest.post(path)
-        : method === 'put'
-          ? appRequest.put(path)
-          : appRequest.delete(path);
+    method === 'post'
+      ? appRequest.post(path)
+      : method === 'put'
+        ? appRequest.put(path)
+        : appRequest.delete(path);
 
   return body === undefined ? pendingRequest : pendingRequest.send(body);
 };
 
-describe('menu category routes', () => {
+describe('fixed-price product routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     routeAuth.context = {
@@ -202,78 +191,39 @@ describe('menu category routes', () => {
       tenantId: 'tenant-1',
       role: 'owner',
     };
-    listMenuCategoriesMock.mockResolvedValue({
+    createFixedPriceProductMock.mockResolvedValue({
       ok: true,
-      data: listedCategories,
+      data: productPayload,
     });
-    createMenuCategoryMock.mockResolvedValue({
+    updateFixedPriceProductMock.mockResolvedValue({
       ok: true,
-      data: categoryPayload,
+      data: productPayload,
     });
-    updateMenuCategoryMock.mockResolvedValue({
-      ok: true,
-      data: categoryPayload,
-    });
-    deleteMenuCategoryMock.mockResolvedValue({ ok: true });
+    deleteFixedPriceProductMock.mockResolvedValue({ ok: true });
   });
 
   it.each(['owner', 'manager'] as const)(
-    'lists categories for a %s tenant',
+    'creates a fixed-price product for a %s tenant',
     async (role) => {
       routeAuth.context = {
         userId: `${role}-1`,
         tenantId: 'tenant-1',
         role,
       };
-
-      const response = await request(createApp()).get('/api/menu/categories');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual(listedCategories);
-      expect(listMenuCategoriesMock).toHaveBeenCalledWith('tenant-1');
-    }
-  );
-
-  it.each(['owner', 'manager'] as const)(
-    'creates a category for a %s tenant',
-    async (role) => {
-      routeAuth.context = {
-        userId: `${role}-1`,
-        tenantId: 'tenant-1',
-        role,
+      const requestBody = {
+        name: 'Ayran',
+        description: null,
+        isAvailable: true,
+        price: '30.00',
       };
-      const requestBody = { name: 'Mains' };
 
       const response = await request(createApp())
-        .post('/api/menu/categories')
+        .post('/api/menu/categories/category-1/products')
         .send(requestBody);
 
       expect(response.status).toBe(201);
-      expect(response.body).toEqual(categoryPayload);
-      expect(createMenuCategoryMock).toHaveBeenCalledWith(
-        'tenant-1',
-        requestBody
-      );
-    }
-  );
-
-  it.each(['owner', 'manager'] as const)(
-    'updates a category for a %s tenant',
-    async (role) => {
-      routeAuth.context = {
-        userId: `${role}-1`,
-        tenantId: 'tenant-1',
-        role,
-      };
-      const requestBody = { name: 'Specials' };
-
-      const response = await request(createApp())
-        .put('/api/menu/categories/category-1')
-        .send(requestBody);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual(categoryPayload);
-      expect(updateMenuCategoryMock).toHaveBeenCalledWith(
+      expect(response.body).toEqual(productPayload);
+      expect(createFixedPriceProductMock).toHaveBeenCalledWith(
         'tenant-1',
         'category-1',
         requestBody
@@ -282,7 +232,36 @@ describe('menu category routes', () => {
   );
 
   it.each(['owner', 'manager'] as const)(
-    'deletes a category for a %s tenant',
+    'updates a fixed-price product for a %s tenant',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+      const requestBody = {
+        name: 'Ayran',
+        description: 'Cold yogurt drink',
+        isAvailable: false,
+        price: '30.75',
+      };
+
+      const response = await request(createApp())
+        .put('/api/menu/products/product-1')
+        .send(requestBody);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(productPayload);
+      expect(updateFixedPriceProductMock).toHaveBeenCalledWith(
+        'tenant-1',
+        'product-1',
+        requestBody
+      );
+    }
+  );
+
+  it.each(['owner', 'manager'] as const)(
+    'deletes a fixed-price product for a %s tenant',
     async (role) => {
       routeAuth.context = {
         userId: `${role}-1`,
@@ -291,14 +270,14 @@ describe('menu category routes', () => {
       };
 
       const response = await request(createApp()).delete(
-        '/api/menu/categories/category-1'
+        '/api/menu/products/product-1'
       );
 
       expect(response.status).toBe(204);
       expect(response.body).toEqual({});
-      expect(deleteMenuCategoryMock).toHaveBeenCalledWith(
+      expect(deleteFixedPriceProductMock).toHaveBeenCalledWith(
         'tenant-1',
-        'category-1'
+        'product-1'
       );
     }
   );
@@ -307,45 +286,63 @@ describe('menu category routes', () => {
     [
       'create',
       () => {
-        createMenuCategoryMock.mockResolvedValue({
+        createFixedPriceProductMock.mockResolvedValue({
           ok: false,
-          errorCode: 'INVALID_MENU_CATEGORY_REQUEST',
+          errorCode: 'INVALID_MENU_PRODUCT_REQUEST',
         });
         return request(createApp())
-          .post('/api/menu/categories')
-          .send({ name: '   ' });
+          .post('/api/menu/categories/category-1/products')
+          .send({ name: 'Ayran', price: 'abc' });
       },
       400,
-      'INVALID_MENU_CATEGORY_REQUEST',
-      'Menu category request is invalid.',
+      'INVALID_MENU_PRODUCT_REQUEST',
+      'Menu product request is invalid.',
     ],
     [
-      'update',
+      'create missing category',
       () => {
-        updateMenuCategoryMock.mockResolvedValue({
+        createFixedPriceProductMock.mockResolvedValue({
           ok: false,
           errorCode: 'MENU_CATEGORY_NOT_FOUND',
         });
         return request(createApp())
-          .put('/api/menu/categories/category-1')
-          .send({ name: 'Mains' });
+          .post('/api/menu/categories/missing-category/products')
+          .send({ name: 'Ayran', price: '30.00' });
       },
       404,
       'MENU_CATEGORY_NOT_FOUND',
       'Menu category could not be found.',
     ],
     [
-      'delete',
+      'update duplicate name',
       () => {
-        deleteMenuCategoryMock.mockResolvedValue({
+        updateFixedPriceProductMock.mockResolvedValue({
           ok: false,
-          errorCode: 'MENU_CATEGORY_DELETE_FAILED',
+          errorCode: 'MENU_PRODUCT_NAME_ALREADY_EXISTS',
         });
-        return request(createApp()).delete('/api/menu/categories/category-1');
+        return request(createApp()).put('/api/menu/products/product-1').send({
+          name: 'Ayran',
+          description: null,
+          isAvailable: true,
+          price: '30.00',
+        });
       },
       422,
-      'MENU_CATEGORY_DELETE_FAILED',
-      'Menu category could not be deleted.',
+      'MENU_PRODUCT_NAME_ALREADY_EXISTS',
+      'A menu product with this name already exists in this category.',
+    ],
+    [
+      'delete missing product',
+      () => {
+        deleteFixedPriceProductMock.mockResolvedValue({
+          ok: false,
+          errorCode: 'MENU_PRODUCT_NOT_FOUND',
+        });
+        return request(createApp()).delete('/api/menu/products/product-1');
+      },
+      404,
+      'MENU_PRODUCT_NOT_FOUND',
+      'Menu product could not be found.',
     ],
   ] as const)(
     'maps %s service failures to HTTP %i responses',
@@ -358,10 +355,24 @@ describe('menu category routes', () => {
   );
 
   it.each([
-    ['list', 'get', '/api/menu/categories', undefined],
-    ['create', 'post', '/api/menu/categories', { name: 'Mains' }],
-    ['update', 'put', '/api/menu/categories/category-1', { name: 'Mains' }],
-    ['delete', 'delete', '/api/menu/categories/category-1', undefined],
+    [
+      'create',
+      'post',
+      '/api/menu/categories/category-1/products',
+      { name: 'Ayran', price: '30.00' },
+    ],
+    [
+      'update',
+      'put',
+      '/api/menu/products/product-1',
+      {
+        name: 'Ayran',
+        description: null,
+        isAvailable: true,
+        price: '30.00',
+      },
+    ],
+    ['delete', 'delete', '/api/menu/products/product-1', undefined],
   ] as const)(
     'rejects %s requests from courier users',
     async (_label, method, path, body) => {
@@ -378,18 +389,31 @@ describe('menu category routes', () => {
         code: 'FORBIDDEN',
         message: 'You do not have permission to perform this action.',
       });
-      expect(listMenuCategoriesMock).not.toHaveBeenCalled();
-      expect(createMenuCategoryMock).not.toHaveBeenCalled();
-      expect(updateMenuCategoryMock).not.toHaveBeenCalled();
-      expect(deleteMenuCategoryMock).not.toHaveBeenCalled();
+      expect(createFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(updateFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(deleteFixedPriceProductMock).not.toHaveBeenCalled();
     }
   );
 
   it.each([
-    ['list', 'get', '/api/menu/categories', undefined],
-    ['create', 'post', '/api/menu/categories', { name: 'Mains' }],
-    ['update', 'put', '/api/menu/categories/category-1', { name: 'Mains' }],
-    ['delete', 'delete', '/api/menu/categories/category-1', undefined],
+    [
+      'create',
+      'post',
+      '/api/menu/categories/category-1/products',
+      { name: 'Ayran', price: '30.00' },
+    ],
+    [
+      'update',
+      'put',
+      '/api/menu/products/product-1',
+      {
+        name: 'Ayran',
+        description: null,
+        isAvailable: true,
+        price: '30.00',
+      },
+    ],
+    ['delete', 'delete', '/api/menu/products/product-1', undefined],
   ] as const)(
     'rejects %s requests from unauthenticated users',
     async (_label, method, path, body) => {
@@ -402,18 +426,31 @@ describe('menu category routes', () => {
         code: 'UNAUTHENTICATED',
         message: 'You must sign in to perform this action.',
       });
-      expect(listMenuCategoriesMock).not.toHaveBeenCalled();
-      expect(createMenuCategoryMock).not.toHaveBeenCalled();
-      expect(updateMenuCategoryMock).not.toHaveBeenCalled();
-      expect(deleteMenuCategoryMock).not.toHaveBeenCalled();
+      expect(createFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(updateFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(deleteFixedPriceProductMock).not.toHaveBeenCalled();
     }
   );
 
   it.each([
-    ['list', 'get', '/api/menu/categories', undefined],
-    ['create', 'post', '/api/menu/categories', { name: 'Mains' }],
-    ['update', 'put', '/api/menu/categories/category-1', { name: 'Mains' }],
-    ['delete', 'delete', '/api/menu/categories/category-1', undefined],
+    [
+      'create',
+      'post',
+      '/api/menu/categories/category-1/products',
+      { name: 'Ayran', price: '30.00' },
+    ],
+    [
+      'update',
+      'put',
+      '/api/menu/products/product-1',
+      {
+        name: 'Ayran',
+        description: null,
+        isAvailable: true,
+        price: '30.00',
+      },
+    ],
+    ['delete', 'delete', '/api/menu/products/product-1', undefined],
   ] as const)(
     'rejects %s requests from authenticated users without tenant membership',
     async (_label, method, path, body) => {
@@ -427,10 +464,9 @@ describe('menu category routes', () => {
         message:
           'Your account is not linked to a tenant. Contact support for help.',
       });
-      expect(listMenuCategoriesMock).not.toHaveBeenCalled();
-      expect(createMenuCategoryMock).not.toHaveBeenCalled();
-      expect(updateMenuCategoryMock).not.toHaveBeenCalled();
-      expect(deleteMenuCategoryMock).not.toHaveBeenCalled();
+      expect(createFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(updateFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(deleteFixedPriceProductMock).not.toHaveBeenCalled();
     }
   );
 });

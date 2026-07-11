@@ -43,6 +43,13 @@
       "when": 1783683090017,
       "tag": "0005_complete_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783778097515,
+      "tag": "0006_sloppy_shen",
+      "breakpoints": true
     }
   ]
 }

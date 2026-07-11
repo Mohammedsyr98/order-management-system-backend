@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -137,6 +138,29 @@ export const menuCategories = pgTable(
     index('menu_categories_tenant_id_idx').on(table.tenantId),
     uniqueIndex('menu_categories_tenant_name_unique_idx').on(
       table.tenantId,
+      sql`lower(${table.name})`
+    ),
+  ]
+);
+
+export const menuProducts = pgTable(
+  'menu_products',
+  {
+    id: text('id').primaryKey(),
+    categoryId: text('category_id')
+      .notNull()
+      .references(() => menuCategories.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    isAvailable: boolean('is_available').notNull().default(true),
+    priceMinorUnits: integer('price_minor_units').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('menu_products_category_id_idx').on(table.categoryId),
+    uniqueIndex('menu_products_category_name_unique_idx').on(
+      table.categoryId,
       sql`lower(${table.name})`
     ),
   ]

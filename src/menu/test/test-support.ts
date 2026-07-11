@@ -1,7 +1,8 @@
 import { db } from '../../db/index.js';
-import { menuCategories } from '../../db/schema.js';
+import { menuCategories, menuProducts } from '../../db/schema.js';
 
 type InsertMenuCategoryOptions = Partial<typeof menuCategories.$inferInsert>;
+type InsertMenuProductOptions = Partial<typeof menuProducts.$inferInsert>;
 
 export const insertMenuCategory = async (
   options: InsertMenuCategoryOptions = {}
@@ -16,4 +17,22 @@ export const insertMenuCategory = async (
   await db.insert(menuCategories).values(category);
 
   return category;
+};
+
+export const insertMenuProduct = async (
+  options: InsertMenuProductOptions = {}
+) => {
+  const product = {
+    id: 'product-1',
+    categoryId: 'category-1',
+    name: 'Ayran',
+    description: null,
+    isAvailable: true,
+    priceMinorUnits: 3000,
+    ...options,
+  } satisfies typeof menuProducts.$inferInsert;
+
+  await db.insert(menuProducts).values(product);
+
+  return product;
 };
