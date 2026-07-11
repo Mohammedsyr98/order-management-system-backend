@@ -3,7 +3,12 @@ import {
   defaultTenantTimezone,
 } from '../contracts/tenant.js';
 import { db } from '../db/index.js';
-import { tenantUsers, tenants, user as authUsers } from '../db/schema.js';
+import {
+  menuCategories,
+  tenantUsers,
+  tenants,
+  user as authUsers,
+} from '../db/schema.js';
 
 type TenantInsert = typeof tenants.$inferInsert;
 type TenantUserInsert = typeof tenantUsers.$inferInsert;
@@ -33,6 +38,7 @@ const assertTestDatabaseUrl = () => {
 export const resetTenantTestData = async () => {
   assertTestDatabaseUrl();
 
+  await db.delete(menuCategories);
   await db.delete(tenantUsers);
   await db.delete(tenants);
   await db.delete(authUsers);

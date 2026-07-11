@@ -36,6 +36,13 @@
       "when": 1778247295991,
       "tag": "0004_watery_guardsmen",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783683090017,
+      "tag": "0005_complete_champions",
+      "breakpoints": true
     }
   ]
 }

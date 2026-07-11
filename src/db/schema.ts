@@ -122,6 +122,26 @@ export const tenantUsers = pgTable(
   ]
 );
 
+export const menuCategories = pgTable(
+  'menu_categories',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('menu_categories_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('menu_categories_tenant_name_unique_idx').on(
+      table.tenantId,
+      sql`lower(${table.name})`
+    ),
+  ]
+);
+
 export const authSchema = {
   user,
   session,

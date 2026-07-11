@@ -20,6 +20,13 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   STAFF_UPDATE_FAILED: 'Staff account could not be updated.',
   STAFF_DELETE_FAILED: 'Staff account could not be deleted.',
   STAFF_CREATION_FAILED: 'Staff account could not be created.',
+  INVALID_MENU_CATEGORY_REQUEST: 'Menu category request is invalid.',
+  MENU_CATEGORY_NOT_FOUND: 'Menu category could not be found.',
+  MENU_CATEGORY_NAME_ALREADY_EXISTS:
+    'A menu category with this name already exists.',
+  MENU_CATEGORY_CREATE_FAILED: 'Menu category could not be created.',
+  MENU_CATEGORY_UPDATE_FAILED: 'Menu category could not be updated.',
+  MENU_CATEGORY_DELETE_FAILED: 'Menu category could not be deleted.',
 };
 
 export const apiError = (code: ApiErrorCode): ApiErrorResponse => ({
