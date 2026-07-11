@@ -5,6 +5,7 @@ import {
 import { db } from '../db/index.js';
 import {
   menuCategories,
+  menuProducts,
   tenantUsers,
   tenants,
   user as authUsers,
@@ -38,6 +39,7 @@ const assertTestDatabaseUrl = () => {
 export const resetTenantTestData = async () => {
   assertTestDatabaseUrl();
 
+  await db.delete(menuProducts);
   await db.delete(menuCategories);
   await db.delete(tenantUsers);
   await db.delete(tenants);

@@ -33,6 +33,7 @@ const categoryResponse = ({
   name,
   createdAt: expect.any(String),
   updatedAt: expect.any(String),
+  products: [],
 });
 
 describe('menu category service', () => {
@@ -54,6 +55,7 @@ describe('menu category service', () => {
           name: 'Mains',
           createdAt: expect.any(String),
           updatedAt: expect.any(String),
+          products: [],
         },
       },
     });
@@ -193,34 +195,34 @@ describe('menu category service', () => {
     ['blank name', { name: '   ' }],
     ['non-string name', { name: 123 }],
     ['owner-managed sort field', { name: 'Mains', sortOrder: 1 }],
-  ] as const)('rejects invalid category create payloads with %s', async (
-    _label,
-    body
-  ) => {
-    await insertTenant();
+  ] as const)(
+    'rejects invalid category create payloads with %s',
+    async (_label, body) => {
+      await insertTenant();
 
-    await expect(createMenuCategory('tenant-1', body)).resolves.toEqual({
-      ok: false,
-      errorCode: 'INVALID_MENU_CATEGORY_REQUEST',
-    });
-  });
+      await expect(createMenuCategory('tenant-1', body)).resolves.toEqual({
+        ok: false,
+        errorCode: 'INVALID_MENU_CATEGORY_REQUEST',
+      });
+    }
+  );
 
   it.each([
     ['missing name', {}],
     ['blank name', { name: '   ' }],
     ['non-string name', { name: 123 }],
     ['owner-managed sort field', { name: 'Mains', sortOrder: 1 }],
-  ] as const)('rejects invalid category update payloads with %s', async (
-    _label,
-    body
-  ) => {
-    await insertTenant();
+  ] as const)(
+    'rejects invalid category update payloads with %s',
+    async (_label, body) => {
+      await insertTenant();
 
-    await expect(
-      updateMenuCategory('tenant-1', 'category-1', body)
-    ).resolves.toEqual({
-      ok: false,
-      errorCode: 'INVALID_MENU_CATEGORY_REQUEST',
-    });
-  });
+      await expect(
+        updateMenuCategory('tenant-1', 'category-1', body)
+      ).resolves.toEqual({
+        ok: false,
+        errorCode: 'INVALID_MENU_CATEGORY_REQUEST',
+      });
+    }
+  );
 });

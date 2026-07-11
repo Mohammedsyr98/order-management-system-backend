@@ -27,6 +27,13 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   MENU_CATEGORY_CREATE_FAILED: 'Menu category could not be created.',
   MENU_CATEGORY_UPDATE_FAILED: 'Menu category could not be updated.',
   MENU_CATEGORY_DELETE_FAILED: 'Menu category could not be deleted.',
+  INVALID_MENU_PRODUCT_REQUEST: 'Menu product request is invalid.',
+  MENU_PRODUCT_NOT_FOUND: 'Menu product could not be found.',
+  MENU_PRODUCT_NAME_ALREADY_EXISTS:
+    'A menu product with this name already exists in this category.',
+  MENU_PRODUCT_CREATE_FAILED: 'Menu product could not be created.',
+  MENU_PRODUCT_UPDATE_FAILED: 'Menu product could not be updated.',
+  MENU_PRODUCT_DELETE_FAILED: 'Menu product could not be deleted.',
 };
 
 export const apiError = (code: ApiErrorCode): ApiErrorResponse => ({

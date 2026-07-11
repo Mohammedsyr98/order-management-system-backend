@@ -1,5 +1,6 @@
 import type { ApiErrorCode } from '../contracts/api.js';
 import type {
+  FixedPriceProductResponse,
   ListMenuCategoriesResponse,
   MenuCategoryResponse,
 } from '../contracts/menu.js';
@@ -22,6 +23,27 @@ export type UpdateMenuCategoryErrorCode = Extract<
 export type DeleteMenuCategoryErrorCode = Extract<
   ApiErrorCode,
   'MENU_CATEGORY_NOT_FOUND' | 'MENU_CATEGORY_DELETE_FAILED'
+>;
+
+export type CreateFixedPriceProductErrorCode = Extract<
+  ApiErrorCode,
+  | 'INVALID_MENU_PRODUCT_REQUEST'
+  | 'MENU_CATEGORY_NOT_FOUND'
+  | 'MENU_PRODUCT_NAME_ALREADY_EXISTS'
+  | 'MENU_PRODUCT_CREATE_FAILED'
+>;
+
+export type UpdateFixedPriceProductErrorCode = Extract<
+  ApiErrorCode,
+  | 'INVALID_MENU_PRODUCT_REQUEST'
+  | 'MENU_PRODUCT_NOT_FOUND'
+  | 'MENU_PRODUCT_NAME_ALREADY_EXISTS'
+  | 'MENU_PRODUCT_UPDATE_FAILED'
+>;
+
+export type DeleteFixedPriceProductErrorCode = Extract<
+  ApiErrorCode,
+  'MENU_PRODUCT_NOT_FOUND' | 'MENU_PRODUCT_DELETE_FAILED'
 >;
 
 export type ListMenuCategoriesResult = {
@@ -58,7 +80,41 @@ export type DeleteMenuCategoryResult =
       errorCode: DeleteMenuCategoryErrorCode;
     };
 
+export type CreateFixedPriceProductResult =
+  | {
+      ok: true;
+      data: FixedPriceProductResponse;
+    }
+  | {
+      ok: false;
+      errorCode: CreateFixedPriceProductErrorCode;
+    };
+
+export type UpdateFixedPriceProductResult =
+  | {
+      ok: true;
+      data: FixedPriceProductResponse;
+    }
+  | {
+      ok: false;
+      errorCode: UpdateFixedPriceProductErrorCode;
+    };
+
+export type DeleteFixedPriceProductResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      errorCode: DeleteFixedPriceProductErrorCode;
+    };
+
 export type MenuCategoryRouteErrorCode =
   | CreateMenuCategoryErrorCode
   | UpdateMenuCategoryErrorCode
   | DeleteMenuCategoryErrorCode;
+
+export type FixedPriceProductRouteErrorCode =
+  | CreateFixedPriceProductErrorCode
+  | UpdateFixedPriceProductErrorCode
+  | DeleteFixedPriceProductErrorCode;
