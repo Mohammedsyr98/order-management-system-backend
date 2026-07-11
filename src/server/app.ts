@@ -1,6 +1,7 @@
 import express from 'express';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from '../auth/auth.js';
+import { menuRouter } from '../menu/menu-routes.js';
 import { sessionRouter } from '../session/session-routes.js';
 import { staffRouter } from '../staff/staff-routes.js';
 import { tenantRouter } from '../tenant/tenant-routes.js';
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use('/api/session', sessionRouter);
 app.use('/api/staff', staffRouter);
 app.use('/api/tenant', tenantRouter);
+app.use('/api/menu', menuRouter);
 
 app.get('/', (req, res) => {
   res.send('Test');

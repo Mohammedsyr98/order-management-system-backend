@@ -53,4 +53,11 @@ describe('auth routes', () => {
 
     expect(response.status).toBe(404);
   });
+
+  it('mounts the menu API under /api/menu', async () => {
+    const response = await request(app).get('/api/menu/categories');
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
 });
