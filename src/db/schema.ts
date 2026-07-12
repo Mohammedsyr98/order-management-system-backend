@@ -85,6 +85,11 @@ export const tenantRole = pgEnum('tenant_role', [
   'courier',
 ]);
 
+export const menuProductPricingMode = pgEnum('menu_product_pricing_mode', [
+  'fixed',
+  'priced_by_choice',
+]);
+
 export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -153,7 +158,10 @@ export const menuProducts = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     isAvailable: boolean('is_available').notNull().default(true),
-    priceMinorUnits: integer('price_minor_units').notNull(),
+    pricingMode: menuProductPricingMode('pricing_mode')
+      .notNull()
+      .default('fixed'),
+    priceMinorUnits: integer('price_minor_units'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -161,6 +169,28 @@ export const menuProducts = pgTable(
     index('menu_products_category_id_idx').on(table.categoryId),
     uniqueIndex('menu_products_category_name_unique_idx').on(
       table.categoryId,
+      sql`lower(${table.name})`
+    ),
+  ]
+);
+
+export const menuProductPricingChoices = pgTable(
+  'menu_product_pricing_choices',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => menuProducts.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    isAvailable: boolean('is_available').notNull().default(true),
+    priceMinorUnits: integer('price_minor_units').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('menu_product_pricing_choices_product_id_idx').on(table.productId),
+    uniqueIndex('menu_product_pricing_choices_product_name_unique_idx').on(
+      table.productId,
       sql`lower(${table.name})`
     ),
   ]

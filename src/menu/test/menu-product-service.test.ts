@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { MenuProduct } from '../../contracts/menu.js';
+
 if (!process.env.DATABASE_URL_TEST) {
   throw new Error(
     'DATABASE_URL_TEST is required for menu-product-service.test.ts'
@@ -11,12 +13,17 @@ process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 
 const { insertTenant, resetTenantTestData } =
   await import('../../test/test-db.js');
-const { insertMenuCategory, insertMenuProduct } =
-  await import('./test-support.js');
 const {
+  insertMenuCategory,
+  insertMenuProduct,
+  insertMenuProductPricingChoice,
+} = await import('./test-support.js');
+const {
+  createMenuProduct,
   createFixedPriceProduct,
   deleteFixedPriceProduct,
   listMenuCategories,
+  updateMenuProduct,
   updateFixedPriceProduct,
 } = await import('../menu-service.js');
 
@@ -40,10 +47,60 @@ const productResponse = ({
   name,
   description,
   isAvailable,
-  price,
+  pricingMode: 'fixed',
+  pricing: {
+    price,
+  },
   createdAt: expect.any(String),
   updatedAt: expect.any(String),
 });
+
+const choiceProductResponse = ({
+  id,
+  categoryId = 'category-1',
+  name,
+  description,
+  isAvailable,
+  choices,
+}: {
+  id: string;
+  categoryId?: string;
+  name: string;
+  description: string | null;
+  isAvailable: boolean;
+  choices: Array<{
+    id: string;
+    name: string;
+    price: string;
+    isAvailable: boolean;
+  }>;
+}) => ({
+  id,
+  categoryId,
+  name,
+  description,
+  isAvailable,
+  pricingMode: 'priced_by_choice',
+  pricing: {
+    choices: choices.map((choice) => ({
+      ...choice,
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    })),
+  },
+  createdAt: expect.any(String),
+  updatedAt: expect.any(String),
+});
+
+const expectChoicePricedProduct = (product: MenuProduct) => {
+  expect(product.pricingMode).toBe('priced_by_choice');
+
+  if (product.pricingMode !== 'priced_by_choice') {
+    throw new Error('Expected a choice-priced product.');
+  }
+
+  return product;
+};
 
 describe('fixed-price product service', () => {
   beforeEach(async () => {
@@ -64,16 +121,13 @@ describe('fixed-price product service', () => {
     expect(created).toEqual({
       ok: true,
       data: {
-        product: {
+        product: productResponse({
           id: expect.any(String),
-          categoryId: 'category-1',
           name: 'Ayran',
           description: 'Cold yogurt drink',
           isAvailable: false,
           price: '30.70',
-          createdAt: expect.any(String),
-          updatedAt: expect.any(String),
-        },
+        }),
       },
     });
 
@@ -148,6 +202,180 @@ describe('fixed-price product service', () => {
     });
   });
 
+  it('creates and lists a choice-priced product with normalized choice prices', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+
+    const created = await createMenuProduct('tenant-1', 'category-1', {
+      name: ' Doner ',
+      description: ' Beef doner ',
+      pricingMode: 'priced_by_choice',
+      pricing: {
+        choices: [
+          { name: ' Yarim ', price: '80', isAvailable: true },
+          { name: 'Tam', price: '140.5', isAvailable: false },
+        ],
+      },
+    });
+
+    expect(created).toEqual({
+      ok: true,
+      data: {
+        product: choiceProductResponse({
+          id: expect.any(String),
+          name: 'Doner',
+          description: 'Beef doner',
+          isAvailable: true,
+          choices: [
+            {
+              id: expect.any(String),
+              name: 'Yarim',
+              price: '80.00',
+              isAvailable: true,
+            },
+            {
+              id: expect.any(String),
+              name: 'Tam',
+              price: '140.50',
+              isAvailable: false,
+            },
+          ],
+        }),
+      },
+    });
+
+    if (!created.ok) {
+      throw new Error('Expected product creation to succeed.');
+    }
+
+    const createdProduct = expectChoicePricedProduct(created.data.product);
+
+    await expect(listMenuCategories('tenant-1')).resolves.toEqual({
+      ok: true,
+      data: {
+        categories: [
+          {
+            id: 'category-1',
+            tenantId: 'tenant-1',
+            name: 'Mains',
+            createdAt: expect.any(String),
+            updatedAt: expect.any(String),
+            products: [
+              choiceProductResponse({
+                id: createdProduct.id,
+                name: 'Doner',
+                description: 'Beef doner',
+                isAvailable: true,
+                choices: createdProduct.pricing.choices,
+              }),
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it('fully replaces a choice-priced product pricing configuration on update', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+
+    const created = await createMenuProduct('tenant-1', 'category-1', {
+      name: 'Doner',
+      pricingMode: 'priced_by_choice',
+      pricing: {
+        choices: [
+          { name: 'Yarim', price: '80.00', isAvailable: true },
+          { name: 'Tam', price: '140.00', isAvailable: true },
+        ],
+      },
+    });
+
+    if (!created.ok) {
+      throw new Error('Expected product creation to succeed.');
+    }
+
+    const createdProduct = expectChoicePricedProduct(created.data.product);
+
+    const updated = await updateMenuProduct('tenant-1', createdProduct.id, {
+      name: 'Special Doner',
+      description: null,
+      isAvailable: false,
+      pricingMode: 'priced_by_choice',
+      pricing: {
+        choices: [
+          { name: 'Single', price: '90', isAvailable: true },
+          { name: 'Double', price: '160.75', isAvailable: false },
+        ],
+      },
+    });
+
+    expect(updated).toEqual({
+      ok: true,
+      data: {
+        product: choiceProductResponse({
+          id: createdProduct.id,
+          name: 'Special Doner',
+          description: null,
+          isAvailable: false,
+          choices: [
+            {
+              id: expect.any(String),
+              name: 'Single',
+              price: '90.00',
+              isAvailable: true,
+            },
+            {
+              id: expect.any(String),
+              name: 'Double',
+              price: '160.75',
+              isAvailable: false,
+            },
+          ],
+        }),
+      },
+    });
+
+    if (!updated.ok) {
+      throw new Error('Expected product update to succeed.');
+    }
+
+    const updatedProduct = expectChoicePricedProduct(updated.data.product);
+
+    await expect(listMenuCategories('tenant-1')).resolves.toEqual({
+      ok: true,
+      data: {
+        categories: [
+          {
+            id: 'category-1',
+            tenantId: 'tenant-1',
+            name: 'Mains',
+            createdAt: expect.any(String),
+            updatedAt: expect.any(String),
+            products: [
+              choiceProductResponse({
+                id: createdProduct.id,
+                name: 'Special Doner',
+                description: null,
+                isAvailable: false,
+                choices: updatedProduct.pricing.choices,
+              }),
+            ],
+          },
+        ],
+      },
+    });
+
+    const originalChoiceIds = new Set(
+      createdProduct.pricing.choices.map((choice) => choice.id)
+    );
+
+    expect(
+      updatedProduct.pricing.choices.some((choice) =>
+        originalChoiceIds.has(choice.id)
+      )
+    ).toBe(false);
+  });
+
   it('defaults availability and normalizes omitted or blank descriptions to null', async () => {
     await insertTenant();
     await insertMenuCategory({ id: 'category-1', name: 'Drinks' });
@@ -165,7 +393,10 @@ describe('fixed-price product service', () => {
           name: 'Water',
           description: null,
           isAvailable: true,
-          price: '10.00',
+          pricingMode: 'fixed',
+          pricing: {
+            price: '10.00',
+          },
         },
       },
     });
@@ -188,7 +419,10 @@ describe('fixed-price product service', () => {
           name: 'Still Water',
           description: null,
           isAvailable: true,
-          price: '10.50',
+          pricingMode: 'fixed',
+          pricing: {
+            price: '10.50',
+          },
         },
       },
     });
@@ -241,6 +475,21 @@ describe('fixed-price product service', () => {
       priceMinorUnits: 3000,
       createdAt: new Date('2025-01-01T00:00:00.000Z'),
       updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+    });
+    await insertMenuProduct({
+      id: 'other-tenant-product-2',
+      categoryId: 'category-3',
+      name: 'Doner',
+      pricingMode: 'priced_by_choice',
+      priceMinorUnits: null,
+      createdAt: new Date('2025-01-02T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-02T00:00:00.000Z'),
+    });
+    await insertMenuProductPricingChoice({
+      id: 'other-tenant-choice-1',
+      productId: 'other-tenant-product-2',
+      name: 'Tam',
+      priceMinorUnits: 14000,
     });
 
     await expect(listMenuCategories('tenant-1')).resolves.toEqual({
@@ -308,6 +557,19 @@ describe('fixed-price product service', () => {
       createFixedPriceProduct('tenant-1', 'category-1', {
         name: 'ayran',
         price: '30.00',
+      })
+    ).resolves.toEqual({
+      ok: false,
+      errorCode: 'MENU_PRODUCT_NAME_ALREADY_EXISTS',
+    });
+
+    await expect(
+      createMenuProduct('tenant-1', 'category-1', {
+        name: 'ayran',
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+        },
       })
     ).resolves.toEqual({
       ok: false,
@@ -472,6 +734,92 @@ describe('fixed-price product service', () => {
   );
 
   it.each([
+    [
+      'missing choices',
+      {
+        name: 'Doner',
+        pricingMode: 'priced_by_choice',
+        pricing: {},
+      },
+    ],
+    [
+      'empty choices',
+      {
+        name: 'Doner',
+        pricingMode: 'priced_by_choice',
+        pricing: { choices: [] },
+      },
+    ],
+    [
+      'blank choice name',
+      {
+        name: 'Doner',
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: '   ', price: '80.00', isAvailable: true }],
+        },
+      },
+    ],
+    [
+      'duplicate choice names',
+      {
+        name: 'Doner',
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [
+            { name: 'Tam', price: '140.00', isAvailable: true },
+            { name: ' tam ', price: '150.00', isAvailable: true },
+          ],
+        },
+      },
+    ],
+    [
+      'invalid choice price',
+      {
+        name: 'Doner',
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.999', isAvailable: true }],
+        },
+      },
+    ],
+    [
+      'malformed pricing mode',
+      {
+        name: 'Doner',
+        pricingMode: 'by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+        },
+      },
+    ],
+    [
+      'mixed fixed and choice pricing',
+      {
+        name: 'Doner',
+        price: '100.00',
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+        },
+      },
+    ],
+  ] as const)(
+    'rejects invalid choice-priced product create payloads with %s',
+    async (_label, body) => {
+      await insertTenant();
+      await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+
+      await expect(
+        createMenuProduct('tenant-1', 'category-1', body)
+      ).resolves.toEqual({
+        ok: false,
+        errorCode: 'INVALID_MENU_PRODUCT_REQUEST',
+      });
+    }
+  );
+
+  it.each([
     ['missing name', { description: null, isAvailable: true, price: '30.00' }],
     [
       'missing availability',
@@ -505,6 +853,47 @@ describe('fixed-price product service', () => {
 
       await expect(
         updateFixedPriceProduct('tenant-1', 'product-1', body)
+      ).resolves.toEqual({
+        ok: false,
+        errorCode: 'INVALID_MENU_PRODUCT_REQUEST',
+      });
+    }
+  );
+
+  it.each([
+    [
+      'missing choice availability',
+      {
+        name: 'Doner',
+        description: null,
+        isAvailable: true,
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.00' }],
+        },
+      },
+    ],
+    [
+      'mixed fixed and choice pricing',
+      {
+        name: 'Doner',
+        description: null,
+        isAvailable: true,
+        price: '100.00',
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+        },
+      },
+    ],
+  ] as const)(
+    'rejects invalid choice-priced product update payloads with %s',
+    async (_label, body) => {
+      await insertTenant();
+      await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+
+      await expect(
+        updateMenuProduct('tenant-1', 'product-1', body)
       ).resolves.toEqual({
         ok: false,
         errorCode: 'INVALID_MENU_PRODUCT_REQUEST',

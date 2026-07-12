@@ -128,12 +128,12 @@ vi.mock('../../auth/auth-context.js', () => ({
 }));
 
 vi.mock('../menu-service.js', () => ({
-  createFixedPriceProduct: vi.fn(),
+  createMenuProduct: vi.fn(),
   createMenuCategory: vi.fn(),
-  deleteFixedPriceProduct: vi.fn(),
+  deleteMenuProduct: vi.fn(),
   deleteMenuCategory: vi.fn(),
   listMenuCategories: vi.fn(),
-  updateFixedPriceProduct: vi.fn(),
+  updateMenuProduct: vi.fn(),
   updateMenuCategory: vi.fn(),
 }));
 

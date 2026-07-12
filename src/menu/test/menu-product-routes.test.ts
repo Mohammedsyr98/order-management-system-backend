@@ -4,7 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ResolvedAuthContext } from '../../auth/auth-context.js';
-import type { FixedPriceProductResponse } from '../../contracts/menu.js';
+import type { MenuProductResponse } from '../../contracts/menu.js';
 
 const routeAuth = vi.hoisted<{
   context: ResolvedAuthContext | null | 'missing-membership';
@@ -125,25 +125,22 @@ vi.mock('../../auth/auth-context.js', () => ({
 }));
 
 vi.mock('../menu-service.js', () => ({
-  createFixedPriceProduct: vi.fn(),
+  createMenuProduct: vi.fn(),
   createMenuCategory: vi.fn(),
-  deleteFixedPriceProduct: vi.fn(),
+  deleteMenuProduct: vi.fn(),
   deleteMenuCategory: vi.fn(),
   listMenuCategories: vi.fn(),
-  updateFixedPriceProduct: vi.fn(),
+  updateMenuProduct: vi.fn(),
   updateMenuCategory: vi.fn(),
 }));
 
-const {
-  createFixedPriceProduct,
-  deleteFixedPriceProduct,
-  updateFixedPriceProduct,
-} = await import('../menu-service.js');
+const { createMenuProduct, deleteMenuProduct, updateMenuProduct } =
+  await import('../menu-service.js');
 const { menuRouter } = await import('../menu-routes.js');
 
-const createFixedPriceProductMock = vi.mocked(createFixedPriceProduct);
-const deleteFixedPriceProductMock = vi.mocked(deleteFixedPriceProduct);
-const updateFixedPriceProductMock = vi.mocked(updateFixedPriceProduct);
+const createMenuProductMock = vi.mocked(createMenuProduct);
+const deleteMenuProductMock = vi.mocked(deleteMenuProduct);
+const updateMenuProductMock = vi.mocked(updateMenuProduct);
 
 const createApp = () => {
   const app = express();
@@ -152,14 +149,42 @@ const createApp = () => {
   return app;
 };
 
-const productPayload: FixedPriceProductResponse = {
+const productPayload: MenuProductResponse = {
   product: {
     id: 'product-1',
     categoryId: 'category-1',
     name: 'Ayran',
     description: null,
     isAvailable: true,
-    price: '30.00',
+    pricingMode: 'fixed',
+    pricing: {
+      price: '30.00',
+    },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+};
+
+const choiceProductPayload: MenuProductResponse = {
+  product: {
+    id: 'product-2',
+    categoryId: 'category-1',
+    name: 'Doner',
+    description: null,
+    isAvailable: true,
+    pricingMode: 'priced_by_choice',
+    pricing: {
+      choices: [
+        {
+          id: 'choice-1',
+          name: 'Tam',
+          price: '140.00',
+          isAvailable: true,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    },
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
@@ -183,7 +208,7 @@ const sendMenuRequest = (
   return body === undefined ? pendingRequest : pendingRequest.send(body);
 };
 
-describe('fixed-price product routes', () => {
+describe('menu product routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     routeAuth.context = {
@@ -191,15 +216,15 @@ describe('fixed-price product routes', () => {
       tenantId: 'tenant-1',
       role: 'owner',
     };
-    createFixedPriceProductMock.mockResolvedValue({
+    createMenuProductMock.mockResolvedValue({
       ok: true,
       data: productPayload,
     });
-    updateFixedPriceProductMock.mockResolvedValue({
+    updateMenuProductMock.mockResolvedValue({
       ok: true,
       data: productPayload,
     });
-    deleteFixedPriceProductMock.mockResolvedValue({ ok: true });
+    deleteMenuProductMock.mockResolvedValue({ ok: true });
   });
 
   it.each(['owner', 'manager'] as const)(
@@ -223,7 +248,42 @@ describe('fixed-price product routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual(productPayload);
-      expect(createFixedPriceProductMock).toHaveBeenCalledWith(
+      expect(createMenuProductMock).toHaveBeenCalledWith(
+        'tenant-1',
+        'category-1',
+        requestBody
+      );
+    }
+  );
+
+  it.each(['owner', 'manager'] as const)(
+    'creates a choice-priced product for a %s tenant',
+    async (role) => {
+      routeAuth.context = {
+        userId: `${role}-1`,
+        tenantId: 'tenant-1',
+        role,
+      };
+      createMenuProductMock.mockResolvedValue({
+        ok: true,
+        data: choiceProductPayload,
+      });
+      const requestBody = {
+        name: 'Doner',
+        description: null,
+        pricingMode: 'priced_by_choice',
+        pricing: {
+          choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+        },
+      };
+
+      const response = await request(createApp())
+        .post('/api/menu/categories/category-1/products')
+        .send(requestBody);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(choiceProductPayload);
+      expect(createMenuProductMock).toHaveBeenCalledWith(
         'tenant-1',
         'category-1',
         requestBody
@@ -252,7 +312,7 @@ describe('fixed-price product routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(productPayload);
-      expect(updateFixedPriceProductMock).toHaveBeenCalledWith(
+      expect(updateMenuProductMock).toHaveBeenCalledWith(
         'tenant-1',
         'product-1',
         requestBody
@@ -275,7 +335,7 @@ describe('fixed-price product routes', () => {
 
       expect(response.status).toBe(204);
       expect(response.body).toEqual({});
-      expect(deleteFixedPriceProductMock).toHaveBeenCalledWith(
+      expect(deleteMenuProductMock).toHaveBeenCalledWith(
         'tenant-1',
         'product-1'
       );
@@ -286,7 +346,7 @@ describe('fixed-price product routes', () => {
     [
       'create',
       () => {
-        createFixedPriceProductMock.mockResolvedValue({
+        createMenuProductMock.mockResolvedValue({
           ok: false,
           errorCode: 'INVALID_MENU_PRODUCT_REQUEST',
         });
@@ -301,7 +361,7 @@ describe('fixed-price product routes', () => {
     [
       'create missing category',
       () => {
-        createFixedPriceProductMock.mockResolvedValue({
+        createMenuProductMock.mockResolvedValue({
           ok: false,
           errorCode: 'MENU_CATEGORY_NOT_FOUND',
         });
@@ -316,7 +376,7 @@ describe('fixed-price product routes', () => {
     [
       'update duplicate name',
       () => {
-        updateFixedPriceProductMock.mockResolvedValue({
+        updateMenuProductMock.mockResolvedValue({
           ok: false,
           errorCode: 'MENU_PRODUCT_NAME_ALREADY_EXISTS',
         });
@@ -334,7 +394,7 @@ describe('fixed-price product routes', () => {
     [
       'delete missing product',
       () => {
-        deleteFixedPriceProductMock.mockResolvedValue({
+        deleteMenuProductMock.mockResolvedValue({
           ok: false,
           errorCode: 'MENU_PRODUCT_NOT_FOUND',
         });
@@ -389,9 +449,9 @@ describe('fixed-price product routes', () => {
         code: 'FORBIDDEN',
         message: 'You do not have permission to perform this action.',
       });
-      expect(createFixedPriceProductMock).not.toHaveBeenCalled();
-      expect(updateFixedPriceProductMock).not.toHaveBeenCalled();
-      expect(deleteFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(createMenuProductMock).not.toHaveBeenCalled();
+      expect(updateMenuProductMock).not.toHaveBeenCalled();
+      expect(deleteMenuProductMock).not.toHaveBeenCalled();
     }
   );
 
@@ -426,9 +486,9 @@ describe('fixed-price product routes', () => {
         code: 'UNAUTHENTICATED',
         message: 'You must sign in to perform this action.',
       });
-      expect(createFixedPriceProductMock).not.toHaveBeenCalled();
-      expect(updateFixedPriceProductMock).not.toHaveBeenCalled();
-      expect(deleteFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(createMenuProductMock).not.toHaveBeenCalled();
+      expect(updateMenuProductMock).not.toHaveBeenCalled();
+      expect(deleteMenuProductMock).not.toHaveBeenCalled();
     }
   );
 
@@ -464,9 +524,9 @@ describe('fixed-price product routes', () => {
         message:
           'Your account is not linked to a tenant. Contact support for help.',
       });
-      expect(createFixedPriceProductMock).not.toHaveBeenCalled();
-      expect(updateFixedPriceProductMock).not.toHaveBeenCalled();
-      expect(deleteFixedPriceProductMock).not.toHaveBeenCalled();
+      expect(createMenuProductMock).not.toHaveBeenCalled();
+      expect(updateMenuProductMock).not.toHaveBeenCalled();
+      expect(deleteMenuProductMock).not.toHaveBeenCalled();
     }
   );
 });

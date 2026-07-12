@@ -8,19 +8,19 @@ import {
 import type { MenuCategoryRequest } from '../contracts/menu.js';
 import { sendApiError } from '../http/api-errors.js';
 import {
-  createFixedPriceProduct,
+  createMenuProduct,
   createMenuCategory,
-  deleteFixedPriceProduct,
+  deleteMenuProduct,
   deleteMenuCategory,
   listMenuCategories,
-  updateFixedPriceProduct,
+  updateMenuProduct,
   updateMenuCategory,
 } from './menu-service.js';
 import type {
-  FixedPriceProductRouteErrorCode,
+  MenuProductRouteErrorCode,
   MenuCategoryRouteErrorCode,
 } from './menu-types.js';
-import type { FixedPriceProductRequest } from '../contracts/menu.js';
+import type { MenuProductRequest } from '../contracts/menu.js';
 
 export const menuRouter = Router();
 
@@ -38,9 +38,9 @@ const sendMenuCategoryError = (
   sendApiError(res, status, errorCode);
 };
 
-const sendFixedPriceProductError = (
+const sendMenuProductError = (
   res: Response,
-  errorCode: FixedPriceProductRouteErrorCode
+  errorCode: MenuProductRouteErrorCode
 ) => {
   const status =
     errorCode === 'INVALID_MENU_PRODUCT_REQUEST'
@@ -98,14 +98,14 @@ menuRouter.post(
       return;
     }
 
-    const result = await createFixedPriceProduct(
+    const result = await createMenuProduct(
       context.tenantId,
       categoryId,
-      req.body as FixedPriceProductRequest
+      req.body as MenuProductRequest
     );
 
     if (!result.ok) {
-      sendFixedPriceProductError(res, result.errorCode);
+      sendMenuProductError(res, result.errorCode);
       return;
     }
 
@@ -154,14 +154,14 @@ menuRouter.put(
       return;
     }
 
-    const result = await updateFixedPriceProduct(
+    const result = await updateMenuProduct(
       context.tenantId,
       productId,
-      req.body as FixedPriceProductRequest
+      req.body as MenuProductRequest
     );
 
     if (!result.ok) {
-      sendFixedPriceProductError(res, result.errorCode);
+      sendMenuProductError(res, result.errorCode);
       return;
     }
 
@@ -206,10 +206,10 @@ menuRouter.delete(
       return;
     }
 
-    const result = await deleteFixedPriceProduct(context.tenantId, productId);
+    const result = await deleteMenuProduct(context.tenantId, productId);
 
     if (!result.ok) {
-      sendFixedPriceProductError(res, result.errorCode);
+      sendMenuProductError(res, result.errorCode);
       return;
     }
 

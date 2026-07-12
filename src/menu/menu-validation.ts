@@ -64,29 +64,99 @@ const priceMinorUnitsSchema = z.string().transform((value, context) => {
   return priceMinorUnits;
 });
 
-const fixedPriceProductBaseSchema = z.strictObject({
+const choiceNameKey = (name: string) => name.toLocaleLowerCase('en-US');
+
+const addDuplicateChoiceNameIssues = (
+  choices: Array<{ name: string }>,
+  context: z.RefinementCtx
+) => {
+  const seenChoiceNames = new Map<string, number>();
+
+  choices.forEach((choice, index) => {
+    const key = choiceNameKey(choice.name);
+    const firstIndex = seenChoiceNames.get(key);
+
+    if (firstIndex === undefined) {
+      seenChoiceNames.set(key, index);
+      return;
+    }
+
+    context.addIssue({
+      code: 'custom',
+      message: 'Choice names must be unique within a product.',
+      path: [index, 'name'],
+    });
+  });
+};
+
+const fixedPriceProductBaseSchema = {
   name: z.string().trim().min(1),
   description: descriptionSchema,
   price: priceMinorUnitsSchema,
-});
+};
 
-export const fixedPriceProductCreateSchema = fixedPriceProductBaseSchema
+const legacyFixedPriceProductCreateSchema = z
+  .strictObject(fixedPriceProductBaseSchema)
   .extend({
     isAvailable: z.boolean().default(true),
   })
   .transform(({ price, ...product }) => ({
     ...product,
+    pricingMode: 'fixed' as const,
     priceMinorUnits: price,
   }));
 
-export const fixedPriceProductUpdateSchema = fixedPriceProductBaseSchema
+const legacyFixedPriceProductUpdateSchema = z
+  .strictObject(fixedPriceProductBaseSchema)
   .extend({
     isAvailable: z.boolean(),
   })
   .transform(({ price, ...product }) => ({
     ...product,
+    pricingMode: 'fixed' as const,
     priceMinorUnits: price,
   }));
+
+const fixedPriceProductPricingSchema = z.strictObject({
+  price: priceMinorUnitsSchema,
+});
+
+const explicitFixedPriceProductBaseSchema = {
+  name: z.string().trim().min(1),
+  description: descriptionSchema,
+  pricingMode: z.literal('fixed'),
+  pricing: fixedPriceProductPricingSchema,
+};
+
+const explicitFixedPriceProductCreateSchema = z
+  .strictObject(explicitFixedPriceProductBaseSchema)
+  .extend({
+    isAvailable: z.boolean().default(true),
+  })
+  .transform(({ pricing, ...product }) => ({
+    ...product,
+    priceMinorUnits: pricing.price,
+  }));
+
+const explicitFixedPriceProductUpdateSchema = z
+  .strictObject(explicitFixedPriceProductBaseSchema)
+  .extend({
+    isAvailable: z.boolean(),
+  })
+  .transform(({ pricing, ...product }) => ({
+    ...product,
+    priceMinorUnits: pricing.price,
+  }));
+
+export const fixedPriceProductCreateSchema = z.union([
+  legacyFixedPriceProductCreateSchema,
+  explicitFixedPriceProductCreateSchema,
+]);
+
+export const fixedPriceProductUpdateSchema = z.union([
+  legacyFixedPriceProductUpdateSchema,
+  explicitFixedPriceProductUpdateSchema,
+]);
 
 export type ValidFixedPriceProductCreateRequest = z.infer<
   typeof fixedPriceProductCreateSchema
@@ -95,8 +165,79 @@ export type ValidFixedPriceProductUpdateRequest = z.infer<
   typeof fixedPriceProductUpdateSchema
 >;
 
+const choicePricedProductChoiceCreateSchema = z
+  .strictObject({
+    name: z.string().trim().min(1),
+    isAvailable: z.boolean().default(true),
+    price: priceMinorUnitsSchema,
+  })
+  .transform(({ price, ...choice }) => ({
+    ...choice,
+    priceMinorUnits: price,
+  }));
+
+const choicePricedProductChoiceUpdateSchema = z
+  .strictObject({
+    name: z.string().trim().min(1),
+    isAvailable: z.boolean(),
+    price: priceMinorUnitsSchema,
+  })
+  .transform(({ price, ...choice }) => ({
+    ...choice,
+    priceMinorUnits: price,
+  }));
+
+const choicePricedProductCreateSchema = z
+  .strictObject({
+    name: z.string().trim().min(1),
+    description: descriptionSchema,
+    isAvailable: z.boolean().default(true),
+    pricingMode: z.literal('priced_by_choice'),
+    pricing: z.strictObject({
+      choices: z
+        .array(choicePricedProductChoiceCreateSchema)
+        .min(1)
+        .superRefine(addDuplicateChoiceNameIssues),
+    }),
+  })
+  .transform(({ pricing, ...product }) => ({
+    ...product,
+    choices: pricing.choices,
+  }));
+
+const choicePricedProductUpdateSchema = z
+  .strictObject({
+    name: z.string().trim().min(1),
+    description: descriptionSchema,
+    isAvailable: z.boolean(),
+    pricingMode: z.literal('priced_by_choice'),
+    pricing: z.strictObject({
+      choices: z
+        .array(choicePricedProductChoiceUpdateSchema)
+        .min(1)
+        .superRefine(addDuplicateChoiceNameIssues),
+    }),
+  })
+  .transform(({ pricing, ...product }) => ({
+    ...product,
+    choices: pricing.choices,
+  }));
+
+export type ValidChoicePricedProductCreateRequest = z.infer<
+  typeof choicePricedProductCreateSchema
+>;
+export type ValidChoicePricedProductUpdateRequest = z.infer<
+  typeof choicePricedProductUpdateSchema
+>;
+
 export const parseFixedPriceProductCreateRequest = (value: unknown) =>
   fixedPriceProductCreateSchema.safeParse(value);
 
 export const parseFixedPriceProductUpdateRequest = (value: unknown) =>
   fixedPriceProductUpdateSchema.safeParse(value);
+
+export const parseChoicePricedProductCreateRequest = (value: unknown) =>
+  choicePricedProductCreateSchema.safeParse(value);
+
+export const parseChoicePricedProductUpdateRequest = (value: unknown) =>
+  choicePricedProductUpdateSchema.safeParse(value);
