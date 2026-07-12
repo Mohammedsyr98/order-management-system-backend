@@ -89,6 +89,29 @@ const addDuplicateChoiceNameIssues = (
   });
 };
 
+const addDuplicateAddOnItemNameIssues = (
+  items: Array<{ name: string }>,
+  context: z.RefinementCtx
+) => {
+  const seenItemNames = new Map<string, number>();
+
+  items.forEach((item, index) => {
+    const key = choiceNameKey(item.name);
+    const firstIndex = seenItemNames.get(key);
+
+    if (firstIndex === undefined) {
+      seenItemNames.set(key, index);
+      return;
+    }
+
+    context.addIssue({
+      code: 'custom',
+      message: 'Add-on item names must be unique within a group.',
+      path: [index, 'name'],
+    });
+  });
+};
+
 const fixedPriceProductBaseSchema = {
   name: z.string().trim().min(1),
   description: descriptionSchema,
@@ -241,3 +264,54 @@ export const parseChoicePricedProductCreateRequest = (value: unknown) =>
 
 export const parseChoicePricedProductUpdateRequest = (value: unknown) =>
   choicePricedProductUpdateSchema.safeParse(value);
+
+const addOnItemCreateSchema = z
+  .strictObject({
+    name: z.string().trim().min(1),
+    isAvailable: z.boolean().default(true),
+    price: priceMinorUnitsSchema,
+  })
+  .transform(({ price, ...item }) => ({
+    ...item,
+    priceMinorUnits: price,
+  }));
+
+const addOnItemUpdateSchema = z
+  .strictObject({
+    name: z.string().trim().min(1),
+    isAvailable: z.boolean(),
+    price: priceMinorUnitsSchema,
+  })
+  .transform(({ price, ...item }) => ({
+    ...item,
+    priceMinorUnits: price,
+  }));
+
+const addOnGroupCreateSchema = z.strictObject({
+  name: z.string().trim().min(1),
+  items: z
+    .array(addOnItemCreateSchema)
+    .min(1)
+    .superRefine(addDuplicateAddOnItemNameIssues),
+});
+
+const addOnGroupUpdateSchema = z.strictObject({
+  name: z.string().trim().min(1),
+  items: z
+    .array(addOnItemUpdateSchema)
+    .min(1)
+    .superRefine(addDuplicateAddOnItemNameIssues),
+});
+
+export type ValidAddOnGroupCreateRequest = z.infer<
+  typeof addOnGroupCreateSchema
+>;
+export type ValidAddOnGroupUpdateRequest = z.infer<
+  typeof addOnGroupUpdateSchema
+>;
+
+export const parseAddOnGroupCreateRequest = (value: unknown) =>
+  addOnGroupCreateSchema.safeParse(value);
+
+export const parseAddOnGroupUpdateRequest = (value: unknown) =>
+  addOnGroupUpdateSchema.safeParse(value);

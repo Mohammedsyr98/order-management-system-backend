@@ -1,15 +1,51 @@
 import { db } from '../../db/index.js';
 import {
+  menuAddOnGroups,
+  menuAddOnItems,
   menuCategories,
   menuProductPricingChoices,
   menuProducts,
 } from '../../db/schema.js';
 
+type InsertMenuAddOnGroupOptions = Partial<typeof menuAddOnGroups.$inferInsert>;
+type InsertMenuAddOnItemOptions = Partial<typeof menuAddOnItems.$inferInsert>;
 type InsertMenuCategoryOptions = Partial<typeof menuCategories.$inferInsert>;
 type InsertMenuProductOptions = Partial<typeof menuProducts.$inferInsert>;
 type InsertMenuProductPricingChoiceOptions = Partial<
   typeof menuProductPricingChoices.$inferInsert
 >;
+
+export const insertMenuAddOnGroup = async (
+  options: InsertMenuAddOnGroupOptions = {}
+) => {
+  const group = {
+    id: 'add-on-group-1',
+    tenantId: 'tenant-1',
+    name: 'Drinks',
+    ...options,
+  } satisfies typeof menuAddOnGroups.$inferInsert;
+
+  await db.insert(menuAddOnGroups).values(group);
+
+  return group;
+};
+
+export const insertMenuAddOnItem = async (
+  options: InsertMenuAddOnItemOptions = {}
+) => {
+  const item = {
+    id: 'add-on-item-1',
+    groupId: 'add-on-group-1',
+    name: 'Ayran',
+    isAvailable: true,
+    priceMinorUnits: 3000,
+    ...options,
+  } satisfies typeof menuAddOnItems.$inferInsert;
+
+  await db.insert(menuAddOnItems).values(item);
+
+  return item;
+};
 
 export const insertMenuCategory = async (
   options: InsertMenuCategoryOptions = {}

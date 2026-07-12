@@ -196,6 +196,48 @@ export const menuProductPricingChoices = pgTable(
   ]
 );
 
+export const menuAddOnGroups = pgTable(
+  'menu_add_on_groups',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('menu_add_on_groups_tenant_id_idx').on(table.tenantId),
+    uniqueIndex('menu_add_on_groups_tenant_name_unique_idx').on(
+      table.tenantId,
+      sql`lower(${table.name})`
+    ),
+  ]
+);
+
+export const menuAddOnItems = pgTable(
+  'menu_add_on_items',
+  {
+    id: text('id').primaryKey(),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => menuAddOnGroups.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    isAvailable: boolean('is_available').notNull().default(true),
+    priceMinorUnits: integer('price_minor_units').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('menu_add_on_items_group_id_idx').on(table.groupId),
+    uniqueIndex('menu_add_on_items_group_name_unique_idx').on(
+      table.groupId,
+      sql`lower(${table.name})`
+    ),
+  ]
+);
+
 export const authSchema = {
   user,
   session,

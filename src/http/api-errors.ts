@@ -34,6 +34,13 @@ export const apiErrorMessages: Record<ApiErrorCode, string> = {
   MENU_PRODUCT_CREATE_FAILED: 'Menu product could not be created.',
   MENU_PRODUCT_UPDATE_FAILED: 'Menu product could not be updated.',
   MENU_PRODUCT_DELETE_FAILED: 'Menu product could not be deleted.',
+  INVALID_MENU_ADD_ON_GROUP_REQUEST: 'Menu add-on group request is invalid.',
+  MENU_ADD_ON_GROUP_NOT_FOUND: 'Menu add-on group could not be found.',
+  MENU_ADD_ON_GROUP_NAME_ALREADY_EXISTS:
+    'A menu add-on group with this name already exists.',
+  MENU_ADD_ON_GROUP_CREATE_FAILED: 'Menu add-on group could not be created.',
+  MENU_ADD_ON_GROUP_UPDATE_FAILED: 'Menu add-on group could not be updated.',
+  MENU_ADD_ON_GROUP_DELETE_FAILED: 'Menu add-on group could not be deleted.',
 };
 
 export const apiError = (code: ApiErrorCode): ApiErrorResponse => ({
