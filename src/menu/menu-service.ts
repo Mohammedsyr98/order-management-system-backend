@@ -4,22 +4,32 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type {
   FixedPriceProductRequest,
+  MenuProductRequest,
   MenuCategoryRequest,
 } from '../contracts/menu.js';
 import { isUniqueConstraintViolation } from '../db/db-errors.js';
 import { db } from '../db/index.js';
-import { menuCategories, menuProducts } from '../db/schema.js';
+import {
+  menuCategories,
+  menuProductPricingChoices,
+  menuProducts,
+} from '../db/schema.js';
 import type {
   CreateFixedPriceProductResult,
+  CreateMenuProductResult,
   CreateMenuCategoryResult,
   DeleteFixedPriceProductResult,
+  DeleteMenuProductResult,
   DeleteMenuCategoryResult,
   ListMenuCategoriesResult,
   UpdateFixedPriceProductResult,
+  UpdateMenuProductResult,
   UpdateMenuCategoryResult,
 } from './menu-types.js';
 import {
   formatMinorUnitsPrice,
+  parseChoicePricedProductCreateRequest,
+  parseChoicePricedProductUpdateRequest,
   parseFixedPriceProductCreateRequest,
   parseFixedPriceProductUpdateRequest,
   parseMenuCategoryRequest,
@@ -27,6 +37,7 @@ import {
 
 type PersistedMenuCategory = typeof menuCategories.$inferSelect;
 type PersistedMenuProduct = typeof menuProducts.$inferSelect;
+type PersistedPricingChoice = typeof menuProductPricingChoices.$inferSelect;
 
 const menuCategorySelect = {
   id: menuCategories.id,
@@ -42,9 +53,20 @@ const menuProductSelect = {
   name: menuProducts.name,
   description: menuProducts.description,
   isAvailable: menuProducts.isAvailable,
+  pricingMode: menuProducts.pricingMode,
   priceMinorUnits: menuProducts.priceMinorUnits,
   createdAt: menuProducts.createdAt,
   updatedAt: menuProducts.updatedAt,
+};
+
+const menuProductPricingChoiceSelect = {
+  id: menuProductPricingChoices.id,
+  productId: menuProductPricingChoices.productId,
+  name: menuProductPricingChoices.name,
+  isAvailable: menuProductPricingChoices.isAvailable,
+  priceMinorUnits: menuProductPricingChoices.priceMinorUnits,
+  createdAt: menuProductPricingChoices.createdAt,
+  updatedAt: menuProductPricingChoices.updatedAt,
 };
 
 const serializeFixedPriceProduct = (product: PersistedMenuProduct) => ({
@@ -53,20 +75,90 @@ const serializeFixedPriceProduct = (product: PersistedMenuProduct) => ({
   name: product.name,
   description: product.description,
   isAvailable: product.isAvailable,
-  price: formatMinorUnitsPrice(product.priceMinorUnits),
+  pricingMode: 'fixed' as const,
+  pricing: {
+    price: formatMinorUnitsPrice(product.priceMinorUnits ?? 0),
+  },
   createdAt: product.createdAt.toISOString(),
   updatedAt: product.updatedAt.toISOString(),
 });
 
+const serializePricingChoice = (choice: PersistedPricingChoice) => ({
+  id: choice.id,
+  name: choice.name,
+  isAvailable: choice.isAvailable,
+  price: formatMinorUnitsPrice(choice.priceMinorUnits),
+  createdAt: choice.createdAt.toISOString(),
+  updatedAt: choice.updatedAt.toISOString(),
+});
+
+const serializeMenuProduct = (
+  product: PersistedMenuProduct,
+  choices: PersistedPricingChoice[] = []
+) => {
+  if (product.pricingMode === 'priced_by_choice') {
+    return {
+      id: product.id,
+      categoryId: product.categoryId,
+      name: product.name,
+      description: product.description,
+      isAvailable: product.isAvailable,
+      pricingMode: product.pricingMode,
+      pricing: {
+        choices: choices.map(serializePricingChoice),
+      },
+      createdAt: product.createdAt.toISOString(),
+      updatedAt: product.updatedAt.toISOString(),
+    };
+  }
+
+  return serializeFixedPriceProduct(product);
+};
+
 const serializeMenuCategory = (
   category: PersistedMenuCategory,
-  products: PersistedMenuProduct[] = []
+  products: PersistedMenuProduct[] = [],
+  choicesByProduct: Map<string, PersistedPricingChoice[]> = new Map()
 ) => ({
   ...category,
   createdAt: category.createdAt.toISOString(),
   updatedAt: category.updatedAt.toISOString(),
-  products: products.map(serializeFixedPriceProduct),
+  products: products.map((product) =>
+    serializeMenuProduct(product, choicesByProduct.get(product.id))
+  ),
 });
+
+type PricingChoiceInput = {
+  name: string;
+  isAvailable: boolean;
+  priceMinorUnits: number;
+};
+
+const insertProductPricingChoices = async (
+  productId: string,
+  choices: PricingChoiceInput[]
+) => {
+  const choiceCreatedAt = new Date();
+
+  return db
+    .insert(menuProductPricingChoices)
+    .values(
+      choices.map((choice, index) => {
+        const createdAt = new Date(choiceCreatedAt.getTime() + index);
+
+        return {
+          id: randomUUID(),
+          productId,
+          name: choice.name,
+          isAvailable: choice.isAvailable,
+          priceMinorUnits: choice.priceMinorUnits,
+          createdAt,
+          updatedAt: createdAt,
+        };
+      })
+    )
+    .returning(menuProductPricingChoiceSelect);
+};
 
 const menuCategoryNameUniqueIndex = 'menu_categories_tenant_name_unique_idx';
 const menuProductNameUniqueIndex = 'menu_products_category_name_unique_idx';
@@ -123,6 +215,19 @@ export const listMenuCategories = async (
           .orderBy(asc(menuProducts.createdAt), asc(menuProducts.id));
 
   const productsByCategory = new Map<string, PersistedMenuProduct[]>();
+  const productIds = products.map((product) => product.id);
+  const choices =
+    productIds.length === 0
+      ? []
+      : await db
+          .select(menuProductPricingChoiceSelect)
+          .from(menuProductPricingChoices)
+          .where(inArray(menuProductPricingChoices.productId, productIds))
+          .orderBy(
+            asc(menuProductPricingChoices.createdAt),
+            asc(menuProductPricingChoices.id)
+          );
+  const choicesByProduct = new Map<string, PersistedPricingChoice[]>();
 
   for (const product of products) {
     const categoryProducts = productsByCategory.get(product.categoryId) ?? [];
@@ -130,11 +235,21 @@ export const listMenuCategories = async (
     productsByCategory.set(product.categoryId, categoryProducts);
   }
 
+  for (const choice of choices) {
+    const productChoices = choicesByProduct.get(choice.productId) ?? [];
+    productChoices.push(choice);
+    choicesByProduct.set(choice.productId, productChoices);
+  }
+
   return {
     ok: true,
     data: {
       categories: categories.map((category) =>
-        serializeMenuCategory(category, productsByCategory.get(category.id))
+        serializeMenuCategory(
+          category,
+          productsByCategory.get(category.id),
+          choicesByProduct
+        )
       ),
     },
   };
@@ -232,6 +347,73 @@ export const createFixedPriceProduct = async (
   }
 };
 
+export const createMenuProduct = async (
+  tenantId: string,
+  categoryId: string,
+  request: MenuProductRequest
+): Promise<CreateMenuProductResult> => {
+  const choiceValidation = parseChoicePricedProductCreateRequest(request);
+
+  if (!choiceValidation.success) {
+    const fixedValidation = parseFixedPriceProductCreateRequest(request);
+
+    if (fixedValidation.success) {
+      return createFixedPriceProduct(tenantId, categoryId, request);
+    }
+
+    return { ok: false, errorCode: 'INVALID_MENU_PRODUCT_REQUEST' };
+  }
+
+  const category = await findTenantCategory(tenantId, categoryId);
+
+  if (!category) {
+    return { ok: false, errorCode: 'MENU_CATEGORY_NOT_FOUND' };
+  }
+
+  const product = choiceValidation.data;
+
+  try {
+    const [createdProduct] = await db
+      .insert(menuProducts)
+      .values({
+        id: randomUUID(),
+        categoryId,
+        name: product.name,
+        description: product.description,
+        isAvailable: product.isAvailable,
+        pricingMode: product.pricingMode,
+        priceMinorUnits: null,
+      })
+      .returning(menuProductSelect);
+
+    if (!createdProduct) {
+      return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
+    }
+
+    const createdChoices = await insertProductPricingChoices(
+      createdProduct.id,
+      product.choices
+    );
+
+    if (createdChoices.length !== product.choices.length) {
+      return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
+    }
+
+    return {
+      ok: true,
+      data: {
+        product: serializeMenuProduct(createdProduct, createdChoices),
+      },
+    };
+  } catch (error) {
+    if (isMenuProductNameConflict(error)) {
+      return { ok: false, errorCode: 'MENU_PRODUCT_NAME_ALREADY_EXISTS' };
+    }
+
+    return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
+  }
+};
+
 export const updateFixedPriceProduct = async (
   tenantId: string,
   productId: string,
@@ -258,6 +440,7 @@ export const updateFixedPriceProduct = async (
         name: product.name,
         description: product.description,
         isAvailable: product.isAvailable,
+        pricingMode: product.pricingMode,
         priceMinorUnits: product.priceMinorUnits,
         updatedAt: new Date(),
       })
@@ -268,10 +451,85 @@ export const updateFixedPriceProduct = async (
       return { ok: false, errorCode: 'MENU_PRODUCT_NOT_FOUND' };
     }
 
+    await db
+      .delete(menuProductPricingChoices)
+      .where(eq(menuProductPricingChoices.productId, existingProduct.id));
+
     return {
       ok: true,
       data: {
-        product: serializeFixedPriceProduct(updatedProduct),
+        product: serializeMenuProduct(updatedProduct),
+      },
+    };
+  } catch (error) {
+    if (isMenuProductNameConflict(error)) {
+      return { ok: false, errorCode: 'MENU_PRODUCT_NAME_ALREADY_EXISTS' };
+    }
+
+    return { ok: false, errorCode: 'MENU_PRODUCT_UPDATE_FAILED' };
+  }
+};
+
+export const updateMenuProduct = async (
+  tenantId: string,
+  productId: string,
+  request: MenuProductRequest
+): Promise<UpdateMenuProductResult> => {
+  const choiceValidation = parseChoicePricedProductUpdateRequest(request);
+
+  if (!choiceValidation.success) {
+    const fixedValidation = parseFixedPriceProductUpdateRequest(request);
+
+    if (fixedValidation.success) {
+      return updateFixedPriceProduct(tenantId, productId, request);
+    }
+
+    return { ok: false, errorCode: 'INVALID_MENU_PRODUCT_REQUEST' };
+  }
+
+  const existingProduct = await findTenantProduct(tenantId, productId);
+
+  if (!existingProduct) {
+    return { ok: false, errorCode: 'MENU_PRODUCT_NOT_FOUND' };
+  }
+
+  const product = choiceValidation.data;
+
+  try {
+    const [updatedProduct] = await db
+      .update(menuProducts)
+      .set({
+        name: product.name,
+        description: product.description,
+        isAvailable: product.isAvailable,
+        pricingMode: product.pricingMode,
+        priceMinorUnits: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(menuProducts.id, existingProduct.id))
+      .returning(menuProductSelect);
+
+    if (!updatedProduct) {
+      return { ok: false, errorCode: 'MENU_PRODUCT_NOT_FOUND' };
+    }
+
+    await db
+      .delete(menuProductPricingChoices)
+      .where(eq(menuProductPricingChoices.productId, existingProduct.id));
+
+    const createdChoices = await insertProductPricingChoices(
+      existingProduct.id,
+      product.choices
+    );
+
+    if (createdChoices.length !== product.choices.length) {
+      return { ok: false, errorCode: 'MENU_PRODUCT_UPDATE_FAILED' };
+    }
+
+    return {
+      ok: true,
+      data: {
+        product: serializeMenuProduct(updatedProduct, createdChoices),
       },
     };
   } catch (error) {
@@ -308,6 +566,12 @@ export const deleteFixedPriceProduct = async (
     return { ok: false, errorCode: 'MENU_PRODUCT_DELETE_FAILED' };
   }
 };
+
+export const deleteMenuProduct = async (
+  tenantId: string,
+  productId: string
+): Promise<DeleteMenuProductResult> =>
+  deleteFixedPriceProduct(tenantId, productId);
 
 export const updateMenuCategory = async (
   tenantId: string,
