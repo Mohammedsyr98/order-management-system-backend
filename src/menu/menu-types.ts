@@ -1,6 +1,8 @@
 import type { ApiErrorCode } from '../contracts/api.js';
 import type {
+  ListMenuAddOnGroupsResponse,
   ListMenuCategoriesResponse,
+  MenuAddOnGroupResponse,
   MenuCategoryResponse,
   MenuProductResponse,
 } from '../contracts/menu.js';
@@ -52,9 +54,34 @@ export type DeleteFixedPriceProductErrorCode = Extract<
 
 export type DeleteMenuProductErrorCode = DeleteFixedPriceProductErrorCode;
 
+export type CreateMenuAddOnGroupErrorCode = Extract<
+  ApiErrorCode,
+  | 'INVALID_MENU_ADD_ON_GROUP_REQUEST'
+  | 'MENU_ADD_ON_GROUP_NAME_ALREADY_EXISTS'
+  | 'MENU_ADD_ON_GROUP_CREATE_FAILED'
+>;
+
+export type UpdateMenuAddOnGroupErrorCode = Extract<
+  ApiErrorCode,
+  | 'INVALID_MENU_ADD_ON_GROUP_REQUEST'
+  | 'MENU_ADD_ON_GROUP_NOT_FOUND'
+  | 'MENU_ADD_ON_GROUP_NAME_ALREADY_EXISTS'
+  | 'MENU_ADD_ON_GROUP_UPDATE_FAILED'
+>;
+
+export type DeleteMenuAddOnGroupErrorCode = Extract<
+  ApiErrorCode,
+  'MENU_ADD_ON_GROUP_NOT_FOUND' | 'MENU_ADD_ON_GROUP_DELETE_FAILED'
+>;
+
 export type ListMenuCategoriesResult = {
   ok: true;
   data: ListMenuCategoriesResponse;
+};
+
+export type ListMenuAddOnGroupsResult = {
+  ok: true;
+  data: ListMenuAddOnGroupsResponse;
 };
 
 export type CreateMenuCategoryResult =
@@ -121,6 +148,35 @@ export type DeleteFixedPriceProductResult =
 
 export type DeleteMenuProductResult = DeleteFixedPriceProductResult;
 
+export type CreateMenuAddOnGroupResult =
+  | {
+      ok: true;
+      data: MenuAddOnGroupResponse;
+    }
+  | {
+      ok: false;
+      errorCode: CreateMenuAddOnGroupErrorCode;
+    };
+
+export type UpdateMenuAddOnGroupResult =
+  | {
+      ok: true;
+      data: MenuAddOnGroupResponse;
+    }
+  | {
+      ok: false;
+      errorCode: UpdateMenuAddOnGroupErrorCode;
+    };
+
+export type DeleteMenuAddOnGroupResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      errorCode: DeleteMenuAddOnGroupErrorCode;
+    };
+
 export type MenuCategoryRouteErrorCode =
   | CreateMenuCategoryErrorCode
   | UpdateMenuCategoryErrorCode
@@ -132,3 +188,8 @@ export type FixedPriceProductRouteErrorCode =
   | DeleteFixedPriceProductErrorCode;
 
 export type MenuProductRouteErrorCode = FixedPriceProductRouteErrorCode;
+
+export type MenuAddOnGroupRouteErrorCode =
+  | CreateMenuAddOnGroupErrorCode
+  | UpdateMenuAddOnGroupErrorCode
+  | DeleteMenuAddOnGroupErrorCode;

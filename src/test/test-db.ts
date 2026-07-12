@@ -4,6 +4,8 @@ import {
 } from '../contracts/tenant.js';
 import { db } from '../db/index.js';
 import {
+  menuAddOnGroups,
+  menuAddOnItems,
   menuCategories,
   menuProductPricingChoices,
   menuProducts,
@@ -40,6 +42,8 @@ const assertTestDatabaseUrl = () => {
 export const resetTenantTestData = async () => {
   assertTestDatabaseUrl();
 
+  await db.delete(menuAddOnItems);
+  await db.delete(menuAddOnGroups);
   await db.delete(menuProductPricingChoices);
   await db.delete(menuProducts);
   await db.delete(menuCategories);
