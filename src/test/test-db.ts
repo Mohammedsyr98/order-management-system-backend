@@ -7,6 +7,7 @@ import {
   menuAddOnGroups,
   menuAddOnItems,
   menuCategories,
+  menuProductAddOnGroups,
   menuProductPricingChoices,
   menuProducts,
   tenantUsers,
@@ -42,6 +43,7 @@ const assertTestDatabaseUrl = () => {
 export const resetTenantTestData = async () => {
   assertTestDatabaseUrl();
 
+  await db.delete(menuProductAddOnGroups);
   await db.delete(menuAddOnItems);
   await db.delete(menuAddOnGroups);
   await db.delete(menuProductPricingChoices);

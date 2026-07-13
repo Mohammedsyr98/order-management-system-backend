@@ -4,6 +4,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type {
   FixedPriceProductRequest,
+  MenuAddOnGroup,
   MenuAddOnGroupRequest,
   MenuProductRequest,
   MenuCategoryRequest,
@@ -14,6 +15,7 @@ import {
   menuAddOnGroups,
   menuAddOnItems,
   menuCategories,
+  menuProductAddOnGroups,
   menuProductPricingChoices,
   menuProducts,
 } from '../db/schema.js';
@@ -98,7 +100,10 @@ const menuAddOnItemSelect = {
   updatedAt: menuAddOnItems.updatedAt,
 };
 
-const serializeFixedPriceProduct = (product: PersistedMenuProduct) => ({
+const serializeFixedPriceProduct = (
+  product: PersistedMenuProduct,
+  addOnGroups: MenuAddOnGroup[] = []
+) => ({
   id: product.id,
   categoryId: product.categoryId,
   name: product.name,
@@ -108,6 +113,7 @@ const serializeFixedPriceProduct = (product: PersistedMenuProduct) => ({
   pricing: {
     price: formatMinorUnitsPrice(product.priceMinorUnits ?? 0),
   },
+  addOnGroups,
   createdAt: product.createdAt.toISOString(),
   updatedAt: product.updatedAt.toISOString(),
 });
@@ -123,7 +129,8 @@ const serializePricingChoice = (choice: PersistedPricingChoice) => ({
 
 const serializeMenuProduct = (
   product: PersistedMenuProduct,
-  choices: PersistedPricingChoice[] = []
+  choices: PersistedPricingChoice[] = [],
+  addOnGroups: MenuAddOnGroup[] = []
 ) => {
   if (product.pricingMode === 'priced_by_choice') {
     return {
@@ -136,24 +143,30 @@ const serializeMenuProduct = (
       pricing: {
         choices: choices.map(serializePricingChoice),
       },
+      addOnGroups,
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
     };
   }
 
-  return serializeFixedPriceProduct(product);
+  return serializeFixedPriceProduct(product, addOnGroups);
 };
 
 const serializeMenuCategory = (
   category: PersistedMenuCategory,
   products: PersistedMenuProduct[] = [],
-  choicesByProduct: Map<string, PersistedPricingChoice[]> = new Map()
+  choicesByProduct: Map<string, PersistedPricingChoice[]> = new Map(),
+  addOnGroupsByProduct: Map<string, MenuAddOnGroup[]> = new Map()
 ) => ({
   ...category,
   createdAt: category.createdAt.toISOString(),
   updatedAt: category.updatedAt.toISOString(),
   products: products.map((product) =>
-    serializeMenuProduct(product, choicesByProduct.get(product.id))
+    serializeMenuProduct(
+      product,
+      choicesByProduct.get(product.id),
+      addOnGroupsByProduct.get(product.id)
+    )
   ),
 });
 
@@ -177,6 +190,47 @@ const serializeAddOnGroup = (
   items: items.map(serializeAddOnItem),
 });
 
+const loadTenantAddOnGroups = async (
+  tenantId: string,
+  groupIds: string[]
+): Promise<MenuAddOnGroup[]> => {
+  if (groupIds.length === 0) {
+    return [];
+  }
+
+  const groups = await db
+    .select(menuAddOnGroupSelect)
+    .from(menuAddOnGroups)
+    .where(
+      and(
+        eq(menuAddOnGroups.tenantId, tenantId),
+        inArray(menuAddOnGroups.id, groupIds)
+      )
+    )
+    .orderBy(asc(menuAddOnGroups.createdAt), asc(menuAddOnGroups.id));
+  const items = await db
+    .select(menuAddOnItemSelect)
+    .from(menuAddOnItems)
+    .where(
+      inArray(
+        menuAddOnItems.groupId,
+        groups.map((group) => group.id)
+      )
+    )
+    .orderBy(asc(menuAddOnItems.createdAt), asc(menuAddOnItems.id));
+  const itemsByGroup = new Map<string, PersistedAddOnItem[]>();
+
+  for (const item of items) {
+    const groupItems = itemsByGroup.get(item.groupId) ?? [];
+    groupItems.push(item);
+    itemsByGroup.set(item.groupId, groupItems);
+  }
+
+  return groups.map((group) =>
+    serializeAddOnGroup(group, itemsByGroup.get(group.id))
+  );
+};
+
 type PricingChoiceInput = {
   name: string;
   isAvailable: boolean;
@@ -189,31 +243,32 @@ type AddOnItemInput = {
   priceMinorUnits: number;
 };
 
-const insertProductPricingChoices = async (
+const productPricingChoiceRows = (
   productId: string,
   choices: PricingChoiceInput[]
 ) => {
   const choiceCreatedAt = new Date();
 
-  return db
-    .insert(menuProductPricingChoices)
-    .values(
-      choices.map((choice, index) => {
-        const createdAt = new Date(choiceCreatedAt.getTime() + index);
+  return choices.map((choice, index) => {
+    const createdAt = new Date(choiceCreatedAt.getTime() + index);
 
-        return {
-          id: randomUUID(),
-          productId,
-          name: choice.name,
-          isAvailable: choice.isAvailable,
-          priceMinorUnits: choice.priceMinorUnits,
-          createdAt,
-          updatedAt: createdAt,
-        };
-      })
-    )
-    .returning(menuProductPricingChoiceSelect);
+    return {
+      id: randomUUID(),
+      productId,
+      name: choice.name,
+      isAvailable: choice.isAvailable,
+      priceMinorUnits: choice.priceMinorUnits,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  });
 };
+
+const productAddOnGroupRows = (productId: string, addOnGroupIds: string[]) =>
+  addOnGroupIds.map((addOnGroupId) => ({
+    productId,
+    addOnGroupId,
+  }));
 
 const addOnItemRows = (groupId: string, items: AddOnItemInput[]) => {
   const itemCreatedAt = new Date();
@@ -320,6 +375,39 @@ export const listMenuCategories = async (
             asc(menuProductPricingChoices.id)
           );
   const choicesByProduct = new Map<string, PersistedPricingChoice[]>();
+  const attachedGroups =
+    productIds.length === 0
+      ? []
+      : await db
+          .select({
+            productId: menuProductAddOnGroups.productId,
+            group: menuAddOnGroupSelect,
+          })
+          .from(menuProductAddOnGroups)
+          .innerJoin(
+            menuAddOnGroups,
+            eq(menuAddOnGroups.id, menuProductAddOnGroups.addOnGroupId)
+          )
+          .where(
+            and(
+              inArray(menuProductAddOnGroups.productId, productIds),
+              eq(menuAddOnGroups.tenantId, tenantId)
+            )
+          )
+          .orderBy(asc(menuAddOnGroups.createdAt), asc(menuAddOnGroups.id));
+  const attachedGroupIds = [
+    ...new Set(attachedGroups.map(({ group }) => group.id)),
+  ];
+  const attachedItems =
+    attachedGroupIds.length === 0
+      ? []
+      : await db
+          .select(menuAddOnItemSelect)
+          .from(menuAddOnItems)
+          .where(inArray(menuAddOnItems.groupId, attachedGroupIds))
+          .orderBy(asc(menuAddOnItems.createdAt), asc(menuAddOnItems.id));
+  const attachedItemsByGroup = new Map<string, PersistedAddOnItem[]>();
+  const addOnGroupsByProduct = new Map<string, MenuAddOnGroup[]>();
 
   for (const product of products) {
     const categoryProducts = productsByCategory.get(product.categoryId) ?? [];
@@ -333,6 +421,20 @@ export const listMenuCategories = async (
     choicesByProduct.set(choice.productId, productChoices);
   }
 
+  for (const item of attachedItems) {
+    const groupItems = attachedItemsByGroup.get(item.groupId) ?? [];
+    groupItems.push(item);
+    attachedItemsByGroup.set(item.groupId, groupItems);
+  }
+
+  for (const { productId, group } of attachedGroups) {
+    const productGroups = addOnGroupsByProduct.get(productId) ?? [];
+    productGroups.push(
+      serializeAddOnGroup(group, attachedItemsByGroup.get(group.id))
+    );
+    addOnGroupsByProduct.set(productId, productGroups);
+  }
+
   return {
     ok: true,
     data: {
@@ -340,7 +442,8 @@ export const listMenuCategories = async (
         serializeMenuCategory(
           category,
           productsByCategory.get(category.id),
-          choicesByProduct
+          choicesByProduct,
+          addOnGroupsByProduct
         )
       ),
     },
@@ -495,12 +598,22 @@ export const createFixedPriceProduct = async (
   }
 
   const product = validation.data;
+  const addOnGroups = await loadTenantAddOnGroups(
+    tenantId,
+    product.addOnGroupIds
+  );
+
+  if (addOnGroups.length !== product.addOnGroupIds.length) {
+    return { ok: false, errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND' };
+  }
+
+  const productId = randomUUID();
 
   try {
-    const [createdProduct] = await db
+    const createProductQuery = db
       .insert(menuProducts)
       .values({
-        id: randomUUID(),
+        id: productId,
         categoryId,
         name: product.name,
         description: product.description,
@@ -508,6 +621,24 @@ export const createFixedPriceProduct = async (
         priceMinorUnits: product.priceMinorUnits,
       })
       .returning(menuProductSelect);
+    let createdProduct: PersistedMenuProduct | undefined;
+
+    if (product.addOnGroupIds.length === 0) {
+      [createdProduct] = await createProductQuery;
+    } else {
+      const [createdProducts, createdAttachments] = await db.batch([
+        createProductQuery,
+        db
+          .insert(menuProductAddOnGroups)
+          .values(productAddOnGroupRows(productId, product.addOnGroupIds))
+          .returning({ addOnGroupId: menuProductAddOnGroups.addOnGroupId }),
+      ]);
+      [createdProduct] = createdProducts;
+
+      if (createdAttachments.length !== product.addOnGroupIds.length) {
+        return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
+      }
+    }
 
     if (!createdProduct) {
       return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
@@ -516,7 +647,7 @@ export const createFixedPriceProduct = async (
     return {
       ok: true,
       data: {
-        product: serializeFixedPriceProduct(createdProduct),
+        product: serializeFixedPriceProduct(createdProduct, addOnGroups),
       },
     };
   } catch (error) {
@@ -552,12 +683,22 @@ export const createMenuProduct = async (
   }
 
   const product = choiceValidation.data;
+  const addOnGroups = await loadTenantAddOnGroups(
+    tenantId,
+    product.addOnGroupIds
+  );
+
+  if (addOnGroups.length !== product.addOnGroupIds.length) {
+    return { ok: false, errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND' };
+  }
+
+  const productId = randomUUID();
 
   try {
-    const [createdProduct] = await db
+    const createProductQuery = db
       .insert(menuProducts)
       .values({
-        id: randomUUID(),
+        id: productId,
         categoryId,
         name: product.name,
         description: product.description,
@@ -566,24 +707,49 @@ export const createMenuProduct = async (
         priceMinorUnits: null,
       })
       .returning(menuProductSelect);
+    const createChoicesQuery = db
+      .insert(menuProductPricingChoices)
+      .values(productPricingChoiceRows(productId, product.choices))
+      .returning(menuProductPricingChoiceSelect);
+    let createdProduct: PersistedMenuProduct | undefined;
+    let createdChoices: PersistedPricingChoice[];
 
-    if (!createdProduct) {
-      return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
+    if (product.addOnGroupIds.length === 0) {
+      const [createdProducts, choices] = await db.batch([
+        createProductQuery,
+        createChoicesQuery,
+      ]);
+      [createdProduct] = createdProducts;
+      createdChoices = choices;
+    } else {
+      const [createdProducts, choices, createdAttachments] = await db.batch([
+        createProductQuery,
+        createChoicesQuery,
+        db
+          .insert(menuProductAddOnGroups)
+          .values(productAddOnGroupRows(productId, product.addOnGroupIds))
+          .returning({ addOnGroupId: menuProductAddOnGroups.addOnGroupId }),
+      ]);
+      [createdProduct] = createdProducts;
+      createdChoices = choices;
+
+      if (createdAttachments.length !== product.addOnGroupIds.length) {
+        return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
+      }
     }
 
-    const createdChoices = await insertProductPricingChoices(
-      createdProduct.id,
-      product.choices
-    );
-
-    if (createdChoices.length !== product.choices.length) {
+    if (!createdProduct || createdChoices.length !== product.choices.length) {
       return { ok: false, errorCode: 'MENU_PRODUCT_CREATE_FAILED' };
     }
 
     return {
       ok: true,
       data: {
-        product: serializeMenuProduct(createdProduct, createdChoices),
+        product: serializeMenuProduct(
+          createdProduct,
+          createdChoices,
+          addOnGroups
+        ),
       },
     };
   } catch (error) {
@@ -613,9 +779,17 @@ export const updateFixedPriceProduct = async (
   }
 
   const product = validation.data;
+  const addOnGroups = await loadTenantAddOnGroups(
+    tenantId,
+    product.addOnGroupIds
+  );
+
+  if (addOnGroups.length !== product.addOnGroupIds.length) {
+    return { ok: false, errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND' };
+  }
 
   try {
-    const [updatedProduct] = await db
+    const updateProductQuery = db
       .update(menuProducts)
       .set({
         name: product.name,
@@ -627,19 +801,48 @@ export const updateFixedPriceProduct = async (
       })
       .where(eq(menuProducts.id, existingProduct.id))
       .returning(menuProductSelect);
+    const deleteChoicesQuery = db
+      .delete(menuProductPricingChoices)
+      .where(eq(menuProductPricingChoices.productId, existingProduct.id));
+    const deleteAttachmentsQuery = db
+      .delete(menuProductAddOnGroups)
+      .where(eq(menuProductAddOnGroups.productId, existingProduct.id));
+    let updatedProduct: PersistedMenuProduct | undefined;
+
+    if (product.addOnGroupIds.length === 0) {
+      const [updatedProducts] = await db.batch([
+        updateProductQuery,
+        deleteChoicesQuery,
+        deleteAttachmentsQuery,
+      ]);
+      [updatedProduct] = updatedProducts;
+    } else {
+      const [updatedProducts, , , createdAttachments] = await db.batch([
+        updateProductQuery,
+        deleteChoicesQuery,
+        deleteAttachmentsQuery,
+        db
+          .insert(menuProductAddOnGroups)
+          .values(
+            productAddOnGroupRows(existingProduct.id, product.addOnGroupIds)
+          )
+          .returning({ addOnGroupId: menuProductAddOnGroups.addOnGroupId }),
+      ]);
+      [updatedProduct] = updatedProducts;
+
+      if (createdAttachments.length !== product.addOnGroupIds.length) {
+        return { ok: false, errorCode: 'MENU_PRODUCT_UPDATE_FAILED' };
+      }
+    }
 
     if (!updatedProduct) {
       return { ok: false, errorCode: 'MENU_PRODUCT_NOT_FOUND' };
     }
 
-    await db
-      .delete(menuProductPricingChoices)
-      .where(eq(menuProductPricingChoices.productId, existingProduct.id));
-
     return {
       ok: true,
       data: {
-        product: serializeMenuProduct(updatedProduct),
+        product: serializeMenuProduct(updatedProduct, [], addOnGroups),
       },
     };
   } catch (error) {
@@ -675,9 +878,17 @@ export const updateMenuProduct = async (
   }
 
   const product = choiceValidation.data;
+  const addOnGroups = await loadTenantAddOnGroups(
+    tenantId,
+    product.addOnGroupIds
+  );
+
+  if (addOnGroups.length !== product.addOnGroupIds.length) {
+    return { ok: false, errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND' };
+  }
 
   try {
-    const [updatedProduct] = await db
+    const updateProductQuery = db
       .update(menuProducts)
       .set({
         name: product.name,
@@ -689,19 +900,54 @@ export const updateMenuProduct = async (
       })
       .where(eq(menuProducts.id, existingProduct.id))
       .returning(menuProductSelect);
+    const deleteChoicesQuery = db
+      .delete(menuProductPricingChoices)
+      .where(eq(menuProductPricingChoices.productId, existingProduct.id));
+    const createChoicesQuery = db
+      .insert(menuProductPricingChoices)
+      .values(productPricingChoiceRows(existingProduct.id, product.choices))
+      .returning(menuProductPricingChoiceSelect);
+    const deleteAttachmentsQuery = db
+      .delete(menuProductAddOnGroups)
+      .where(eq(menuProductAddOnGroups.productId, existingProduct.id));
+    let updatedProduct: PersistedMenuProduct | undefined;
+    let createdChoices: PersistedPricingChoice[];
+
+    if (product.addOnGroupIds.length === 0) {
+      const [updatedProducts, , choices] = await db.batch([
+        updateProductQuery,
+        deleteChoicesQuery,
+        createChoicesQuery,
+        deleteAttachmentsQuery,
+      ]);
+      [updatedProduct] = updatedProducts;
+      createdChoices = choices;
+    } else {
+      const [updatedProducts, , choices, , createdAttachments] = await db.batch(
+        [
+          updateProductQuery,
+          deleteChoicesQuery,
+          createChoicesQuery,
+          deleteAttachmentsQuery,
+          db
+            .insert(menuProductAddOnGroups)
+            .values(
+              productAddOnGroupRows(existingProduct.id, product.addOnGroupIds)
+            )
+            .returning({ addOnGroupId: menuProductAddOnGroups.addOnGroupId }),
+        ]
+      );
+      [updatedProduct] = updatedProducts;
+      createdChoices = choices;
+
+      if (createdAttachments.length !== product.addOnGroupIds.length) {
+        return { ok: false, errorCode: 'MENU_PRODUCT_UPDATE_FAILED' };
+      }
+    }
 
     if (!updatedProduct) {
       return { ok: false, errorCode: 'MENU_PRODUCT_NOT_FOUND' };
     }
-
-    await db
-      .delete(menuProductPricingChoices)
-      .where(eq(menuProductPricingChoices.productId, existingProduct.id));
-
-    const createdChoices = await insertProductPricingChoices(
-      existingProduct.id,
-      product.choices
-    );
 
     if (createdChoices.length !== product.choices.length) {
       return { ok: false, errorCode: 'MENU_PRODUCT_UPDATE_FAILED' };
@@ -710,7 +956,11 @@ export const updateMenuProduct = async (
     return {
       ok: true,
       data: {
-        product: serializeMenuProduct(updatedProduct, createdChoices),
+        product: serializeMenuProduct(
+          updatedProduct,
+          createdChoices,
+          addOnGroups
+        ),
       },
     };
   } catch (error) {

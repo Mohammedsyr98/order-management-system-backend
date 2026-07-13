@@ -112,6 +112,25 @@ const addDuplicateAddOnItemNameIssues = (
   });
 };
 
+const addOnGroupIdsSchema = z
+  .array(z.string().trim().min(1))
+  .superRefine((groupIds, context) => {
+    const seenGroupIds = new Set<string>();
+
+    groupIds.forEach((groupId, index) => {
+      if (seenGroupIds.has(groupId)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Add-on group IDs must be unique within a product.',
+          path: [index],
+        });
+        return;
+      }
+
+      seenGroupIds.add(groupId);
+    });
+  });
+
 const fixedPriceProductBaseSchema = {
   name: z.string().trim().min(1),
   description: descriptionSchema,
@@ -122,6 +141,7 @@ const legacyFixedPriceProductCreateSchema = z
   .strictObject(fixedPriceProductBaseSchema)
   .extend({
     isAvailable: z.boolean().default(true),
+    addOnGroupIds: addOnGroupIdsSchema.default([]),
   })
   .transform(({ price, ...product }) => ({
     ...product,
@@ -133,6 +153,7 @@ const legacyFixedPriceProductUpdateSchema = z
   .strictObject(fixedPriceProductBaseSchema)
   .extend({
     isAvailable: z.boolean(),
+    addOnGroupIds: addOnGroupIdsSchema,
   })
   .transform(({ price, ...product }) => ({
     ...product,
@@ -155,6 +176,7 @@ const explicitFixedPriceProductCreateSchema = z
   .strictObject(explicitFixedPriceProductBaseSchema)
   .extend({
     isAvailable: z.boolean().default(true),
+    addOnGroupIds: addOnGroupIdsSchema.default([]),
   })
   .transform(({ pricing, ...product }) => ({
     ...product,
@@ -165,6 +187,7 @@ const explicitFixedPriceProductUpdateSchema = z
   .strictObject(explicitFixedPriceProductBaseSchema)
   .extend({
     isAvailable: z.boolean(),
+    addOnGroupIds: addOnGroupIdsSchema,
   })
   .transform(({ pricing, ...product }) => ({
     ...product,
@@ -215,6 +238,7 @@ const choicePricedProductCreateSchema = z
     name: z.string().trim().min(1),
     description: descriptionSchema,
     isAvailable: z.boolean().default(true),
+    addOnGroupIds: addOnGroupIdsSchema.default([]),
     pricingMode: z.literal('priced_by_choice'),
     pricing: z.strictObject({
       choices: z
@@ -233,6 +257,7 @@ const choicePricedProductUpdateSchema = z
     name: z.string().trim().min(1),
     description: descriptionSchema,
     isAvailable: z.boolean(),
+    addOnGroupIds: addOnGroupIdsSchema,
     pricingMode: z.literal('priced_by_choice'),
     pricing: z.strictObject({
       choices: z

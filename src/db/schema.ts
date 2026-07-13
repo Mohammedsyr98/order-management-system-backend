@@ -5,6 +5,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -234,6 +235,27 @@ export const menuAddOnItems = pgTable(
     uniqueIndex('menu_add_on_items_group_name_unique_idx').on(
       table.groupId,
       sql`lower(${table.name})`
+    ),
+  ]
+);
+
+export const menuProductAddOnGroups = pgTable(
+  'menu_product_add_on_groups',
+  {
+    productId: text('product_id')
+      .notNull()
+      .references(() => menuProducts.id, { onDelete: 'cascade' }),
+    addOnGroupId: text('add_on_group_id')
+      .notNull()
+      .references(() => menuAddOnGroups.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    primaryKey({
+      name: 'menu_product_add_on_groups_pk',
+      columns: [table.productId, table.addOnGroupId],
+    }),
+    index('menu_product_add_on_groups_add_on_group_id_idx').on(
+      table.addOnGroupId
     ),
   ]
 );

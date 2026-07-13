@@ -54,7 +54,8 @@ const sendMenuProductError = (
     errorCode === 'INVALID_MENU_PRODUCT_REQUEST'
       ? 400
       : errorCode === 'MENU_CATEGORY_NOT_FOUND' ||
-          errorCode === 'MENU_PRODUCT_NOT_FOUND'
+          errorCode === 'MENU_PRODUCT_NOT_FOUND' ||
+          errorCode === 'MENU_ADD_ON_GROUP_NOT_FOUND'
         ? 404
         : 422;
 

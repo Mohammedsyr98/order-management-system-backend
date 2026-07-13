@@ -64,6 +64,13 @@
       "when": 1783870796736,
       "tag": "0008_slippery_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783876350999,
+      "tag": "0009_quiet_wolf_cub",
+      "breakpoints": true
     }
   ]
 }

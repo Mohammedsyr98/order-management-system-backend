@@ -160,6 +160,7 @@ const productPayload: MenuProductResponse = {
     pricing: {
       price: '30.00',
     },
+    addOnGroups: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
@@ -185,6 +186,7 @@ const choiceProductPayload: MenuProductResponse = {
         },
       ],
     },
+    addOnGroups: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
@@ -240,6 +242,7 @@ describe('menu product routes', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: ['drinks-group'],
       };
 
       const response = await request(createApp())
@@ -275,6 +278,7 @@ describe('menu product routes', () => {
         pricing: {
           choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
         },
+        addOnGroupIds: ['drinks-group'],
       };
 
       const response = await request(createApp())
@@ -304,6 +308,7 @@ describe('menu product routes', () => {
         description: 'Cold yogurt drink',
         isAvailable: false,
         price: '30.75',
+        addOnGroupIds: ['drinks-group'],
       };
 
       const response = await request(createApp())
@@ -385,11 +390,31 @@ describe('menu product routes', () => {
           description: null,
           isAvailable: true,
           price: '30.00',
+          addOnGroupIds: [],
         });
       },
       422,
       'MENU_PRODUCT_NAME_ALREADY_EXISTS',
       'A menu product with this name already exists in this category.',
+    ],
+    [
+      'attach missing add-on group',
+      () => {
+        createMenuProductMock.mockResolvedValue({
+          ok: false,
+          errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND',
+        });
+        return request(createApp())
+          .post('/api/menu/categories/category-1/products')
+          .send({
+            name: 'Doner',
+            price: '120.00',
+            addOnGroupIds: ['missing-group'],
+          });
+      },
+      404,
+      'MENU_ADD_ON_GROUP_NOT_FOUND',
+      'Menu add-on group could not be found.',
     ],
     [
       'delete missing product',
@@ -419,7 +444,11 @@ describe('menu product routes', () => {
       'create',
       'post',
       '/api/menu/categories/category-1/products',
-      { name: 'Ayran', price: '30.00' },
+      {
+        name: 'Ayran',
+        price: '30.00',
+        addOnGroupIds: ['drinks-group'],
+      },
     ],
     [
       'update',
@@ -430,6 +459,7 @@ describe('menu product routes', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: ['drinks-group'],
       },
     ],
     ['delete', 'delete', '/api/menu/products/product-1', undefined],
@@ -460,7 +490,11 @@ describe('menu product routes', () => {
       'create',
       'post',
       '/api/menu/categories/category-1/products',
-      { name: 'Ayran', price: '30.00' },
+      {
+        name: 'Ayran',
+        price: '30.00',
+        addOnGroupIds: ['drinks-group'],
+      },
     ],
     [
       'update',
@@ -471,6 +505,7 @@ describe('menu product routes', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: ['drinks-group'],
       },
     ],
     ['delete', 'delete', '/api/menu/products/product-1', undefined],
@@ -497,7 +532,11 @@ describe('menu product routes', () => {
       'create',
       'post',
       '/api/menu/categories/category-1/products',
-      { name: 'Ayran', price: '30.00' },
+      {
+        name: 'Ayran',
+        price: '30.00',
+        addOnGroupIds: ['drinks-group'],
+      },
     ],
     [
       'update',
@@ -508,6 +547,7 @@ describe('menu product routes', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: ['drinks-group'],
       },
     ],
     ['delete', 'delete', '/api/menu/products/product-1', undefined],
