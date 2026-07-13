@@ -343,6 +343,32 @@ describe('fixed-price product service', () => {
     });
   });
 
+  it('does not expose fixed-price products without a persisted price', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Drinks' });
+
+    let invalidProductPersisted = true;
+
+    try {
+      await insertMenuProduct({
+        id: 'invalid-fixed-product',
+        name: 'Broken product',
+        pricingMode: 'fixed',
+        priceMinorUnits: null,
+      });
+    } catch {
+      invalidProductPersisted = false;
+    }
+
+    if (!invalidProductPersisted) {
+      return;
+    }
+
+    await expect(listMenuCategories('tenant-1')).rejects.toThrow(
+      'Fixed-price menu product invalid-fixed-product is missing a price.'
+    );
+  });
+
   it('creates and lists a choice-priced product with normalized choice prices', async () => {
     await insertTenant();
     await insertMenuCategory({ id: 'category-1', name: 'Mains' });

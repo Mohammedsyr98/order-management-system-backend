@@ -12,9 +12,12 @@ import type {
 import { isUniqueConstraintViolation } from '../db/db-errors.js';
 import { db } from '../db/index.js';
 import {
+  menuAddOnGroupTenantNameUniqueIndexName,
   menuAddOnGroups,
   menuAddOnItems,
+  menuCategoryTenantNameUniqueIndexName,
   menuCategories,
+  menuProductCategoryNameUniqueIndexName,
   menuProductAddOnGroups,
   menuProductPricingChoices,
   menuProducts,
@@ -103,20 +106,28 @@ const menuAddOnItemSelect = {
 const serializeFixedPriceProduct = (
   product: PersistedMenuProduct,
   addOnGroups: MenuAddOnGroup[] = []
-) => ({
-  id: product.id,
-  categoryId: product.categoryId,
-  name: product.name,
-  description: product.description,
-  isAvailable: product.isAvailable,
-  pricingMode: 'fixed' as const,
-  pricing: {
-    price: formatMinorUnitsPrice(product.priceMinorUnits ?? 0),
-  },
-  addOnGroups,
-  createdAt: product.createdAt.toISOString(),
-  updatedAt: product.updatedAt.toISOString(),
-});
+) => {
+  if (product.priceMinorUnits === null) {
+    throw new Error(
+      `Fixed-price menu product ${product.id} is missing a price.`
+    );
+  }
+
+  return {
+    id: product.id,
+    categoryId: product.categoryId,
+    name: product.name,
+    description: product.description,
+    isAvailable: product.isAvailable,
+    pricingMode: 'fixed' as const,
+    pricing: {
+      price: formatMinorUnitsPrice(product.priceMinorUnits),
+    },
+    addOnGroups,
+    createdAt: product.createdAt.toISOString(),
+    updatedAt: product.updatedAt.toISOString(),
+  };
+};
 
 const serializePricingChoice = (choice: PersistedPricingChoice) => ({
   id: choice.id,
@@ -288,19 +299,14 @@ const addOnItemRows = (groupId: string, items: AddOnItemInput[]) => {
   });
 };
 
-const menuCategoryNameUniqueIndex = 'menu_categories_tenant_name_unique_idx';
-const menuProductNameUniqueIndex = 'menu_products_category_name_unique_idx';
-const menuAddOnGroupNameUniqueIndex =
-  'menu_add_on_groups_tenant_name_unique_idx';
-
 const isMenuCategoryNameConflict = (error: unknown) =>
-  isUniqueConstraintViolation(error, menuCategoryNameUniqueIndex);
+  isUniqueConstraintViolation(error, menuCategoryTenantNameUniqueIndexName);
 
 const isMenuProductNameConflict = (error: unknown) =>
-  isUniqueConstraintViolation(error, menuProductNameUniqueIndex);
+  isUniqueConstraintViolation(error, menuProductCategoryNameUniqueIndexName);
 
 const isMenuAddOnGroupNameConflict = (error: unknown) =>
-  isUniqueConstraintViolation(error, menuAddOnGroupNameUniqueIndex);
+  isUniqueConstraintViolation(error, menuAddOnGroupTenantNameUniqueIndexName);
 
 const findTenantCategory = async (tenantId: string, categoryId: string) => {
   const [category] = await db

@@ -71,6 +71,13 @@
       "when": 1783876350999,
       "tag": "0009_quiet_wolf_cub",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783919993835,
+      "tag": "0010_rainy_sharon_ventura",
+      "breakpoints": true
     }
   ]
 }

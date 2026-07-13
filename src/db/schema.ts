@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -91,6 +92,15 @@ export const menuProductPricingMode = pgEnum('menu_product_pricing_mode', [
   'priced_by_choice',
 ]);
 
+export const menuCategoryTenantNameUniqueIndexName =
+  'menu_categories_tenant_name_unique_idx' as const;
+export const menuProductCategoryNameUniqueIndexName =
+  'menu_products_category_name_unique_idx' as const;
+export const menuProductPricingModePriceCheckName =
+  'menu_products_pricing_mode_price_check' as const;
+export const menuAddOnGroupTenantNameUniqueIndexName =
+  'menu_add_on_groups_tenant_name_unique_idx' as const;
+
 export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -142,7 +152,7 @@ export const menuCategories = pgTable(
   },
   (table) => [
     index('menu_categories_tenant_id_idx').on(table.tenantId),
-    uniqueIndex('menu_categories_tenant_name_unique_idx').on(
+    uniqueIndex(menuCategoryTenantNameUniqueIndexName).on(
       table.tenantId,
       sql`lower(${table.name})`
     ),
@@ -168,9 +178,16 @@ export const menuProducts = pgTable(
   },
   (table) => [
     index('menu_products_category_id_idx').on(table.categoryId),
-    uniqueIndex('menu_products_category_name_unique_idx').on(
+    uniqueIndex(menuProductCategoryNameUniqueIndexName).on(
       table.categoryId,
       sql`lower(${table.name})`
+    ),
+    check(
+      menuProductPricingModePriceCheckName,
+      sql`(
+        (${table.pricingMode} = 'fixed' AND ${table.priceMinorUnits} IS NOT NULL AND ${table.priceMinorUnits} >= 0)
+        OR (${table.pricingMode} = 'priced_by_choice' AND ${table.priceMinorUnits} IS NULL)
+      )`
     ),
   ]
 );
@@ -210,7 +227,7 @@ export const menuAddOnGroups = pgTable(
   },
   (table) => [
     index('menu_add_on_groups_tenant_id_idx').on(table.tenantId),
-    uniqueIndex('menu_add_on_groups_tenant_name_unique_idx').on(
+    uniqueIndex(menuAddOnGroupTenantNameUniqueIndexName).on(
       table.tenantId,
       sql`lower(${table.name})`
     ),
