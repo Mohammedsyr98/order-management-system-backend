@@ -3,6 +3,7 @@ import {
   menuAddOnGroups,
   menuAddOnItems,
   menuCategories,
+  menuProductAddOnGroups,
   menuProductPricingChoices,
   menuProducts,
 } from '../../db/schema.js';
@@ -11,6 +12,9 @@ type InsertMenuAddOnGroupOptions = Partial<typeof menuAddOnGroups.$inferInsert>;
 type InsertMenuAddOnItemOptions = Partial<typeof menuAddOnItems.$inferInsert>;
 type InsertMenuCategoryOptions = Partial<typeof menuCategories.$inferInsert>;
 type InsertMenuProductOptions = Partial<typeof menuProducts.$inferInsert>;
+type InsertMenuProductAddOnGroupOptions = Partial<
+  typeof menuProductAddOnGroups.$inferInsert
+>;
 type InsertMenuProductPricingChoiceOptions = Partial<
   typeof menuProductPricingChoices.$inferInsert
 >;
@@ -78,6 +82,20 @@ export const insertMenuProduct = async (
   await db.insert(menuProducts).values(product);
 
   return product;
+};
+
+export const insertMenuProductAddOnGroup = async (
+  options: InsertMenuProductAddOnGroupOptions = {}
+) => {
+  const attachment = {
+    productId: 'product-1',
+    addOnGroupId: 'add-on-group-1',
+    ...options,
+  } satisfies typeof menuProductAddOnGroups.$inferInsert;
+
+  await db.insert(menuProductAddOnGroups).values(attachment);
+
+  return attachment;
 };
 
 export const insertMenuProductPricingChoice = async (

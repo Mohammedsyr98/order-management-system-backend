@@ -31,6 +31,7 @@ export type CreateFixedPriceProductErrorCode = Extract<
   ApiErrorCode,
   | 'INVALID_MENU_PRODUCT_REQUEST'
   | 'MENU_CATEGORY_NOT_FOUND'
+  | 'MENU_ADD_ON_GROUP_NOT_FOUND'
   | 'MENU_PRODUCT_NAME_ALREADY_EXISTS'
   | 'MENU_PRODUCT_CREATE_FAILED'
 >;
@@ -41,6 +42,7 @@ export type UpdateFixedPriceProductErrorCode = Extract<
   ApiErrorCode,
   | 'INVALID_MENU_PRODUCT_REQUEST'
   | 'MENU_PRODUCT_NOT_FOUND'
+  | 'MENU_ADD_ON_GROUP_NOT_FOUND'
   | 'MENU_PRODUCT_NAME_ALREADY_EXISTS'
   | 'MENU_PRODUCT_UPDATE_FAILED'
 >;

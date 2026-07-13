@@ -6,6 +6,7 @@ export type MenuProductBase = {
   name: string;
   description: string | null;
   isAvailable: boolean;
+  addOnGroups: MenuAddOnGroup[];
   createdAt: string;
   updatedAt: string;
 };
@@ -74,6 +75,7 @@ export type FixedPriceProductRequest = {
   price?: unknown;
   pricingMode?: unknown;
   pricing?: unknown;
+  addOnGroupIds?: unknown;
 };
 
 export type MenuProductRequest = FixedPriceProductRequest;

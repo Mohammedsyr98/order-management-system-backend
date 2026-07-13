@@ -14,14 +14,19 @@ process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
 const { insertTenant, resetTenantTestData } =
   await import('../../test/test-db.js');
 const {
+  insertMenuAddOnGroup,
+  insertMenuAddOnItem,
   insertMenuCategory,
   insertMenuProduct,
+  insertMenuProductAddOnGroup,
   insertMenuProductPricingChoice,
 } = await import('./test-support.js');
 const {
   createMenuProduct,
   createFixedPriceProduct,
+  deleteMenuAddOnGroup,
   deleteFixedPriceProduct,
+  listMenuAddOnGroups,
   listMenuCategories,
   updateMenuProduct,
   updateFixedPriceProduct,
@@ -51,6 +56,7 @@ const productResponse = ({
   pricing: {
     price,
   },
+  addOnGroups: [],
   createdAt: expect.any(String),
   updatedAt: expect.any(String),
 });
@@ -88,6 +94,7 @@ const choiceProductResponse = ({
       updatedAt: expect.any(String),
     })),
   },
+  addOnGroups: [],
   createdAt: expect.any(String),
   updatedAt: expect.any(String),
 });
@@ -105,6 +112,139 @@ const expectChoicePricedProduct = (product: MenuProduct) => {
 describe('fixed-price product service', () => {
   beforeEach(async () => {
     await resetTenantTestData();
+  });
+
+  it('attaches reusable add-on groups when creating and listing a product', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuAddOnGroup({ id: 'drinks-group', name: 'Drinks' });
+    await insertMenuAddOnItem({
+      id: 'ayran-item',
+      groupId: 'drinks-group',
+      name: 'Ayran',
+      priceMinorUnits: 3075,
+    });
+
+    const created = await createMenuProduct('tenant-1', 'category-1', {
+      name: 'Doner',
+      description: 'Beef doner',
+      price: '120.00',
+      addOnGroupIds: ['drinks-group'],
+    });
+
+    const attachedGroup = {
+      id: 'drinks-group',
+      tenantId: 'tenant-1',
+      name: 'Drinks',
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+      items: [
+        {
+          id: 'ayran-item',
+          groupId: 'drinks-group',
+          name: 'Ayran',
+          price: '30.75',
+          isAvailable: true,
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+        },
+      ],
+    };
+    const product = {
+      id: expect.any(String),
+      categoryId: 'category-1',
+      name: 'Doner',
+      description: 'Beef doner',
+      isAvailable: true,
+      pricingMode: 'fixed',
+      pricing: { price: '120.00' },
+      addOnGroups: [attachedGroup],
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    };
+
+    expect(created).toEqual({ ok: true, data: { product } });
+
+    await expect(listMenuCategories('tenant-1')).resolves.toEqual({
+      ok: true,
+      data: {
+        categories: [
+          {
+            id: 'category-1',
+            tenantId: 'tenant-1',
+            name: 'Mains',
+            createdAt: expect.any(String),
+            updatedAt: expect.any(String),
+            products: [product],
+          },
+        ],
+      },
+    });
+  });
+
+  it('fully replaces product add-on attachments without changing reusable groups', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuProduct({ id: 'product-1', name: 'Doner' });
+    await insertMenuAddOnGroup({ id: 'drinks-group', name: 'Drinks' });
+    await insertMenuAddOnItem({
+      id: 'ayran-item',
+      groupId: 'drinks-group',
+      name: 'Ayran',
+    });
+    await insertMenuAddOnGroup({ id: 'extras-group', name: 'Extras' });
+    await insertMenuAddOnItem({
+      id: 'cheese-item',
+      groupId: 'extras-group',
+      name: 'Cheese',
+      priceMinorUnits: 1500,
+    });
+    await insertMenuProductAddOnGroup({
+      productId: 'product-1',
+      addOnGroupId: 'drinks-group',
+    });
+
+    const updated = await updateMenuProduct('tenant-1', 'product-1', {
+      name: 'Doner',
+      description: null,
+      isAvailable: true,
+      price: '30.00',
+      addOnGroupIds: ['extras-group'],
+    });
+
+    expect(updated).toMatchObject({
+      ok: true,
+      data: {
+        product: {
+          id: 'product-1',
+          addOnGroups: [
+            {
+              id: 'extras-group',
+              name: 'Extras',
+              items: [
+                {
+                  id: 'cheese-item',
+                  name: 'Cheese',
+                  price: '15.00',
+                  isAvailable: true,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const listed = await listMenuCategories('tenant-1');
+    expect(listed.data.categories[0]?.products[0]?.addOnGroups).toMatchObject([
+      { id: 'extras-group' },
+    ]);
+
+    const reusableGroups = await listMenuAddOnGroups('tenant-1');
+    expect(reusableGroups.data.addOnGroups).toHaveLength(2);
+    expect(reusableGroups.data.addOnGroups.map(({ id }) => id)).toEqual(
+      expect.arrayContaining(['drinks-group', 'extras-group'])
+    );
   });
 
   it('creates, lists, updates, and hard-deletes a fixed-price product in a category', async () => {
@@ -167,6 +307,7 @@ describe('fixed-price product service', () => {
         description: null,
         isAvailable: true,
         price: '31',
+        addOnGroupIds: [],
       })
     ).resolves.toEqual({
       ok: true,
@@ -275,6 +416,61 @@ describe('fixed-price product service', () => {
     });
   });
 
+  it('creates a choice-priced product with complete attached add-on context', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuAddOnGroup({ id: 'sauces-group', name: 'Sauces' });
+    await insertMenuAddOnItem({
+      id: 'garlic-sauce-item',
+      groupId: 'sauces-group',
+      name: 'Garlic sauce',
+      isAvailable: false,
+      priceMinorUnits: 500,
+    });
+
+    const created = await createMenuProduct('tenant-1', 'category-1', {
+      name: 'Doner',
+      description: 'Beef doner',
+      pricingMode: 'priced_by_choice',
+      pricing: {
+        choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+      },
+      addOnGroupIds: ['sauces-group'],
+    });
+
+    expect(created).toMatchObject({
+      ok: true,
+      data: {
+        product: {
+          name: 'Doner',
+          pricingMode: 'priced_by_choice',
+          pricing: {
+            choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
+          },
+          addOnGroups: [
+            {
+              id: 'sauces-group',
+              name: 'Sauces',
+              items: [
+                {
+                  id: 'garlic-sauce-item',
+                  name: 'Garlic sauce',
+                  price: '5.00',
+                  isAvailable: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const listed = await listMenuCategories('tenant-1');
+    expect(listed.data.categories[0]?.products[0]).toMatchObject(
+      created.ok ? created.data.product : {}
+    );
+  });
+
   it('fully replaces a choice-priced product pricing configuration on update', async () => {
     await insertTenant();
     await insertMenuCategory({ id: 'category-1', name: 'Mains' });
@@ -288,6 +484,7 @@ describe('fixed-price product service', () => {
           { name: 'Tam', price: '140.00', isAvailable: true },
         ],
       },
+      addOnGroupIds: [],
     });
 
     if (!created.ok) {
@@ -307,6 +504,7 @@ describe('fixed-price product service', () => {
           { name: 'Double', price: '160.75', isAvailable: false },
         ],
       },
+      addOnGroupIds: [],
     });
 
     expect(updated).toEqual({
@@ -376,6 +574,167 @@ describe('fixed-price product service', () => {
     ).toBe(false);
   });
 
+  it('replaces choice-priced product choices and add-on attachments together', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuProduct({
+      id: 'product-1',
+      name: 'Doner',
+      pricingMode: 'priced_by_choice',
+      priceMinorUnits: null,
+    });
+    await insertMenuProductPricingChoice({
+      id: 'old-choice',
+      productId: 'product-1',
+      name: 'Regular',
+    });
+    await insertMenuAddOnGroup({ id: 'drinks-group', name: 'Drinks' });
+    await insertMenuAddOnGroup({ id: 'sauces-group', name: 'Sauces' });
+    await insertMenuAddOnItem({
+      id: 'garlic-sauce-item',
+      groupId: 'sauces-group',
+      name: 'Garlic sauce',
+    });
+    await insertMenuProductAddOnGroup({
+      productId: 'product-1',
+      addOnGroupId: 'drinks-group',
+    });
+
+    const updated = await updateMenuProduct('tenant-1', 'product-1', {
+      name: 'Doner',
+      description: null,
+      isAvailable: true,
+      pricingMode: 'priced_by_choice',
+      pricing: {
+        choices: [{ name: 'Large', price: '160.00', isAvailable: true }],
+      },
+      addOnGroupIds: ['sauces-group'],
+    });
+
+    expect(updated).toMatchObject({
+      ok: true,
+      data: {
+        product: {
+          pricing: { choices: [{ name: 'Large', price: '160.00' }] },
+          addOnGroups: [
+            {
+              id: 'sauces-group',
+              items: [{ id: 'garlic-sauce-item', name: 'Garlic sauce' }],
+            },
+          ],
+        },
+      },
+    });
+
+    const listed = await listMenuCategories('tenant-1');
+    expect(listed.data.categories[0]?.products[0]).toMatchObject(
+      updated.ok ? updated.data.product : {}
+    );
+  });
+
+  it('rejects missing, deleted, and foreign-tenant add-on group attachments', async () => {
+    await insertTenant();
+    await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuAddOnGroup({ id: 'drinks-group', name: 'Drinks' });
+    await insertMenuAddOnGroup({
+      id: 'foreign-group',
+      tenantId: 'tenant-2',
+      name: 'Foreign Drinks',
+    });
+
+    for (const addOnGroupId of ['missing-group', 'foreign-group']) {
+      await expect(
+        createMenuProduct('tenant-1', 'category-1', {
+          name: `Doner ${addOnGroupId}`,
+          description: null,
+          price: '120.00',
+          addOnGroupIds: [addOnGroupId],
+        })
+      ).resolves.toEqual({
+        ok: false,
+        errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND',
+      });
+    }
+
+    await expect(
+      deleteMenuAddOnGroup('tenant-1', 'drinks-group')
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      createMenuProduct('tenant-1', 'category-1', {
+        name: 'Deleted group product',
+        description: null,
+        price: '120.00',
+        addOnGroupIds: ['drinks-group'],
+      })
+    ).resolves.toEqual({
+      ok: false,
+      errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND',
+    });
+
+    await insertMenuAddOnGroup({ id: 'extras-group', name: 'Extras' });
+    await insertMenuProduct({ id: 'product-1', name: 'Doner' });
+    await insertMenuProductAddOnGroup({
+      productId: 'product-1',
+      addOnGroupId: 'extras-group',
+    });
+    await expect(
+      updateMenuProduct('tenant-1', 'product-1', {
+        name: 'Doner',
+        description: null,
+        isAvailable: true,
+        price: '120.00',
+        addOnGroupIds: ['foreign-group'],
+      })
+    ).resolves.toEqual({
+      ok: false,
+      errorCode: 'MENU_ADD_ON_GROUP_NOT_FOUND',
+    });
+
+    const listed = await listMenuCategories('tenant-1');
+    expect(listed.data.categories[0]?.products[0]?.addOnGroups).toMatchObject([
+      { id: 'extras-group' },
+    ]);
+  });
+
+  it('removes deleted add-on groups from product responses without changing the product', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuProduct({
+      id: 'product-1',
+      name: 'Doner',
+      description: 'Beef doner',
+      isAvailable: false,
+      priceMinorUnits: 12000,
+    });
+    await insertMenuAddOnGroup({ id: 'drinks-group', name: 'Drinks' });
+    await insertMenuAddOnItem({
+      id: 'ayran-item',
+      groupId: 'drinks-group',
+      name: 'Ayran',
+    });
+    await insertMenuProductAddOnGroup({
+      productId: 'product-1',
+      addOnGroupId: 'drinks-group',
+    });
+
+    await expect(
+      deleteMenuAddOnGroup('tenant-1', 'drinks-group')
+    ).resolves.toEqual({ ok: true });
+
+    const listed = await listMenuCategories('tenant-1');
+    expect(listed.data.categories[0]?.products).toMatchObject([
+      {
+        id: 'product-1',
+        name: 'Doner',
+        description: 'Beef doner',
+        isAvailable: false,
+        pricing: { price: '120.00' },
+        addOnGroups: [],
+      },
+    ]);
+  });
+
   it('defaults availability and normalizes omitted or blank descriptions to null', async () => {
     await insertTenant();
     await insertMenuCategory({ id: 'category-1', name: 'Drinks' });
@@ -411,6 +770,7 @@ describe('fixed-price product service', () => {
         description: '   ',
         isAvailable: true,
         price: '10.5',
+        addOnGroupIds: [],
       })
     ).resolves.toMatchObject({
       ok: true,
@@ -532,6 +892,55 @@ describe('fixed-price product service', () => {
     });
   });
 
+  it('lists attached groups and items in stable creation order', async () => {
+    await insertTenant();
+    await insertMenuCategory({ id: 'category-1', name: 'Mains' });
+    await insertMenuProduct({ id: 'product-1', name: 'Doner' });
+    await insertMenuAddOnGroup({
+      id: 'group-2',
+      name: 'Extras',
+      createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    });
+    await insertMenuAddOnGroup({
+      id: 'group-1',
+      name: 'Sauces',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    await insertMenuAddOnItem({
+      id: 'item-2',
+      groupId: 'group-1',
+      name: 'Hot sauce',
+      createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    });
+    await insertMenuAddOnItem({
+      id: 'item-1',
+      groupId: 'group-1',
+      name: 'Garlic sauce',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    await insertMenuProductAddOnGroup({
+      productId: 'product-1',
+      addOnGroupId: 'group-2',
+    });
+    await insertMenuProductAddOnGroup({
+      productId: 'product-1',
+      addOnGroupId: 'group-1',
+    });
+
+    const listed = await listMenuCategories('tenant-1');
+    const groups = listed.data.categories[0]?.products[0]?.addOnGroups;
+
+    expect(groups?.map(({ id }) => id)).toEqual(['group-1', 'group-2']);
+    expect(groups?.[0]?.items.map(({ id }) => id)).toEqual([
+      'item-1',
+      'item-2',
+    ]);
+  });
+
   it('rejects duplicate product names within a category and allows reuse across categories and tenants', async () => {
     await insertTenant();
     await insertTenant({ id: 'tenant-2', name: 'Second Tenant' });
@@ -582,6 +991,7 @@ describe('fixed-price product service', () => {
         description: null,
         isAvailable: true,
         price: '10.00',
+        addOnGroupIds: [],
       })
     ).resolves.toEqual({
       ok: false,
@@ -669,6 +1079,7 @@ describe('fixed-price product service', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: [],
       })
     ).resolves.toEqual({
       ok: false,
@@ -681,6 +1092,7 @@ describe('fixed-price product service', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: [],
       })
     ).resolves.toEqual({
       ok: false,
@@ -717,6 +1129,14 @@ describe('fixed-price product service', () => {
     [
       'owner-managed sort field',
       { name: 'Ayran', price: '30.00', sortOrder: 1 },
+    ],
+    [
+      'duplicate add-on group IDs',
+      {
+        name: 'Ayran',
+        price: '30.00',
+        addOnGroupIds: ['drinks-group', 'drinks-group'],
+      },
     ],
   ] as const)(
     'rejects invalid product create payloads with %s',
@@ -820,12 +1240,42 @@ describe('fixed-price product service', () => {
   );
 
   it.each([
-    ['missing name', { description: null, isAvailable: true, price: '30.00' }],
+    [
+      'missing name',
+      {
+        description: null,
+        isAvailable: true,
+        price: '30.00',
+        addOnGroupIds: [],
+      },
+    ],
     [
       'missing availability',
-      { name: 'Ayran', description: null, price: '30.00' },
+      {
+        name: 'Ayran',
+        description: null,
+        price: '30.00',
+        addOnGroupIds: [],
+      },
     ],
-    ['missing price', { name: 'Ayran', description: null, isAvailable: true }],
+    [
+      'missing add-on attachments',
+      {
+        name: 'Ayran',
+        description: null,
+        isAvailable: true,
+        price: '30.00',
+      },
+    ],
+    [
+      'missing price',
+      {
+        name: 'Ayran',
+        description: null,
+        isAvailable: true,
+        addOnGroupIds: [],
+      },
+    ],
     [
       'price with more than two decimals',
       {
@@ -833,6 +1283,7 @@ describe('fixed-price product service', () => {
         description: null,
         isAvailable: true,
         price: '30.999',
+        addOnGroupIds: [],
       },
     ],
     [
@@ -842,6 +1293,7 @@ describe('fixed-price product service', () => {
         description: null,
         isAvailable: true,
         price: '30.00',
+        addOnGroupIds: [],
         categoryId: 'category-2',
       },
     ],
@@ -871,6 +1323,7 @@ describe('fixed-price product service', () => {
         pricing: {
           choices: [{ name: 'Tam', price: '140.00' }],
         },
+        addOnGroupIds: [],
       },
     ],
     [
@@ -884,6 +1337,7 @@ describe('fixed-price product service', () => {
         pricing: {
           choices: [{ name: 'Tam', price: '140.00', isAvailable: true }],
         },
+        addOnGroupIds: [],
       },
     ],
   ] as const)(
